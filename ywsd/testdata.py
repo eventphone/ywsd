@@ -1,0 +1,147 @@
+from ywsd.objects import *
+from aiopg.sa import create_engine
+
+
+async def reinstall_testdata():
+    async with create_engine(database="ywsd") as engine:
+        async with engine.acquire() as conn:
+            await regenerate_database_objects(conn)
+            await write_testdata(conn)
+
+
+async def get_extension(ext):
+    async with create_engine(database="ywsd") as engine:
+        async with engine.acquire() as conn:
+            res = await Extension.load_extension(ext, conn)
+            return res
+
+async def exec_with_db(func):
+    async with create_engine(database="ywsd") as engine:
+        async with engine.acquire() as conn:
+            return await func(conn)
+
+async def write_testdata(conn):
+    await conn.execute(Yate.table.insert().values([
+        {"hostname": "dect", "voip_listener": "local"},
+        {"hostname": "sip", "voip_listener": "local"},
+        {"hostname": "app", "voip_listener": "local"},
+    ]))
+
+    yates = {}
+    async for row in conn.execute(Yate.table.select()):
+        yates[row.hostname] = row.id
+
+    print(repr(yates))
+
+    await conn.execute(Extension.table.insert().values([
+        {
+            "yate_id": None,
+            "extension": "2000",
+            "name": "PoC",
+            "type": "GROUP",
+            "dect_displaymode": None,
+            "forwarding_mode": "DISABLED",
+            "lang": "de_DE",
+        },
+        {
+            "yate_id": yates["dect"],
+            "extension": "2001",
+            "name": "PoC Sascha",
+            "type": "MULTIRING",
+            "dect_displaymode": "NUMBER_AND_NAME",
+            "forwarding_mode": "DISABLED",
+            "lang": "de_DE",
+        },
+        {
+            "yate_id": yates["dect"],
+            "extension": "2002",
+            "name": "PoC Bernie",
+            "type": "SIMPLE",
+            "dect_displaymode": "NUMBER",
+            "forwarding_mode": "DISABLED",
+            "lang": "de_DE",
+        },
+        {
+            "yate_id": yates["dect"],
+            "extension": "2004",
+            "name": "PoC BeF",
+            "type": "SIMPLE",
+            "dect_displaymode": "NUMBER",
+            "forwarding_mode": "DISABLED",
+            "lang": "de_DE",
+        },
+        {
+            "yate_id": yates["sip"],
+            "extension": "2005",
+            "name": "PoC Sascha (SIP)",
+            "type": "SIMPLE",
+            "forwarding_mode": "DISABLED",
+            "dect_displaymode": None,
+            "lang": "de_DE",
+        },
+        {
+            "yate_id": yates["sip"],
+            "extension": "2042",
+            "name": "PoC Garwin",
+            "type": "SIMPLE",
+            "dect_displaymode": None,
+            "forwarding_mode": "DISABLED",
+            "lang": "de_DE",
+        },
+    ]))
+
+    exts = {}
+    async for row in conn.execute(Extension.table.select()):
+        exts[row.extension] = row.id
+    print(repr(exts))
+
+    await conn.execute(CallgroupRank.table.insert().values([
+        {
+            "extension_id": exts["2000"],
+            "index": 0,
+            "mode": "DEFAULT"
+        },
+        {
+            "extension_id": exts["2001"],
+            "index": 0,
+            "mode": "DEFAULT"
+        },
+    ]))
+
+    cgr = {}
+    async for row in conn.execute(CallgroupRank.table.select()):
+        cgr[row.extension_id] = row.id
+    print(repr(cgr))
+
+    await conn.execute(CallgroupRank.member_table.insert().values([
+        {
+            "callgrouprank_id": cgr[exts["2000"]],
+            "extension_id": exts["2001"],
+            "rankmember_type": "DEFAULT",
+            "active": True
+        },
+        {
+            "callgrouprank_id": cgr[exts["2000"]],
+            "extension_id": exts["2002"],
+            "rankmember_type": "DEFAULT",
+            "active": True
+        },
+        {
+            "callgrouprank_id": cgr[exts["2000"]],
+            "extension_id": exts["2004"],
+            "rankmember_type": "DEFAULT",
+            "active": True
+        },
+        {
+            "callgrouprank_id": cgr[exts["2000"]],
+            "extension_id": exts["2042"],
+            "rankmember_type": "DEFAULT",
+            "active": True
+        },
+        {
+            "callgrouprank_id": cgr[exts["2001"]],
+            "extension_id": exts["2005"],
+            "rankmember_type": "DEFAULT",
+            "active": True
+        },
+    ]))
