@@ -101,10 +101,11 @@ class Extension:
 
     async def populate_callgroup_ranks(self, db_connection):
         result = await db_connection.execute(
-              sa.select([CallgroupRank.table, CallgroupRank.member_table,Extension.table], use_labels=True)
+              sa.select([CallgroupRank.table, CallgroupRank.member_table, Extension.table], use_labels=True)
                 .where(CallgroupRank.table.c.extension_id == self.id)
                 .where(CallgroupRank.member_table.c.extension_id == Extension.table.c.id)
                 .where(CallgroupRank.table.c.id == CallgroupRank.member_table.c.callgrouprank_id)
+                .order_by(CallgroupRank.table.c.index)
         )
         self.callgroup_ranks = []
         current_rank_id = None
@@ -122,7 +123,14 @@ class Extension:
 
     @property
     def immediate_forward(self):
-        return self.forwarding_type == Extension.ForwardingMode.ENABLED and self.forwarding_delay == 0
+        return self.forwarding_mode == Extension.ForwardingMode.ENABLED and self.forwarding_delay == 0
+
+    @property
+    def has_active_group_members(self):
+        for rank in self.callgroup_ranks:
+            if any([m.active for m in rank.members]):
+                return True
+        return False
 
 
 class CallgroupRank:
