@@ -61,8 +61,8 @@ class RoutingTree:
     def _populate_eventphone_parameters(self):
         eventphone_parameters = self._calculate_eventphone_parameters()
         self.routing_result.target.parameters.update(eventphone_parameters)
-        for entry in self.new_routing_cache_content:
-            entry.update(eventphone_parameters)
+        for entry in self.new_routing_cache_content.values():
+            entry.target.parameters.update(eventphone_parameters)
 
     @staticmethod
     def _make_ringback_target(path):
@@ -122,6 +122,7 @@ class RoutingTreeDiscoveryVisitor:
             await node.populate_callgroup_ranks(db_connection)
         # now we visit the populated children if they haven't been already discovered
         if node.forwarding_extension is not None:
+            # TODO: We might want to avoid following forwards if this is discovered as a MULTIRING child?
             fwd = node.forwarding_extension
             if fwd.extension not in path_extensions_local:
                 await self._visit(fwd, depth+1, path_extensions_local, db_connection)
@@ -256,8 +257,8 @@ class YateRoutingGenerationVisitor:
                     fork_targets.append(member_route.target)
                     self._cache_intermediate_result(member_route)
 
-            # if this is a MULTIRING, the extension itself needs to be part of the first group
-            if node.type == Extension.Type.MULTIRING:
+            # if this is a MULTIRING or (SIMPLE with forward), the extension itself needs to be part of the first group
+            if node.type in (Extension.Type.MULTIRING, Extension.Type.SIMPLE):
                 fork_targets.insert(0, self.generate_simple_routing_target(node))
             # we might need to issue a delayed forward
 
