@@ -69,7 +69,9 @@ class RoutingTree:
         return CallTarget(
             "wave/play/" + path,
             {
-                "fork.calltype": "persistent"
+                "fork.calltype": "persistent",
+                "fork.autoring": "true",
+                "fork.automessage": "call.progress",
             })
 
     async def _load_source_and_target(self, db_connection):
