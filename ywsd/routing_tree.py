@@ -1,30 +1,18 @@
 from enum import Enum
-from typing import List, Dict
+from typing import List, Dict, Tuple
 import os.path
 import uuid
 
-from ywsd.objects import Extension, CallgroupRank
-from ywsd import settings
-
-
-def calltargets_to_yate_callfork(call_targets: List['CallTarget']):
-    index = 1
-    params = {}
-    for target in call_targets:
-        current_prefix = "callto." + str(index)
-        params[current_prefix] = target.target
-        for key, value in target.parameters:
-            params[current_prefix + "." + key] = value
-        index += 1
-    return params
+from ywsd.objects import Extension, CallgroupRank, Yate
 
 
 class RoutingTree:
-    def __init__(self, source, target):
+    def __init__(self, source, target, settings):
         self.source_extension = source
         self.target_extension = target
         self.source = None
         self.target = None
+        self._settings = settings
 
         self.routing_result = None
         self.new_routing_cache_content = {}
@@ -35,9 +23,13 @@ class RoutingTree:
         await visitor.discover_tree(db_connection)
         return visitor
 
-    def calculate_routing(self, local_yate, yates_dict):
+    def calculate_routing(self, local_yate: int, yates_dict: Dict[int, Yate]) -> \
+            Tuple['IntermediateRoutingResult', Dict[str, 'IntermediateRoutingResult']]:
         self._calculate_main_routing(local_yate, yates_dict)
         self._provide_ringback()
+        self._populate_eventphone_parameters()
+
+        return self.routing_result, self.new_routing_cache_content
 
     def _calculate_main_routing(self, local_yate, yates_dict):
         visitor = YateRoutingGenerationVisitor(self, local_yate, yates_dict)
@@ -47,7 +39,7 @@ class RoutingTree:
 
     def _provide_ringback(self):
         if self.target.ringback is not None:
-            ringback_path = os.path.join(settings.RINGBACK_TOP_DIRECTORY, self.target.ringback)
+            ringback_path = os.path.join(self._settings.RINGBACK_TOP_DIRECTORY, self.target.ringback)
             if os.path.isfile(ringback_path):
                 if self.routing_result.is_simple:
                     # we need to convert routing result into a simple fork
@@ -61,6 +53,16 @@ class RoutingTree:
                 else:
                     # if the routing target is already a callfork, just prepend the ringback target to the first group
                     self.routing_result.fork_targets.insert(0, self._make_ringback_target(ringback_path))
+
+    def _calculate_eventphone_parameters(self):
+        # push parameters here like faked-caller-id or caller-language
+        return {}
+
+    def _populate_eventphone_parameters(self):
+        eventphone_parameters = self._calculate_eventphone_parameters()
+        self.routing_result.target.parameters.update(eventphone_parameters)
+        for entry in self.new_routing_cache_content:
+            entry.update(eventphone_parameters)
 
     @staticmethod
     def _make_ringback_target(path):
@@ -180,7 +182,7 @@ class IntermediateRoutingResult:
 
 
 class YateRoutingGenerationVisitor:
-    def __init__(self, routing_tree: RoutingTree, local_yate_id: int, yates_dict: dict):
+    def __init__(self, routing_tree: RoutingTree, local_yate_id: int, yates_dict: Dict[int, Yate]):
         self._routing_tree = routing_tree
         self._local_yate_id = local_yate_id
         self._yates_dict = yates_dict
@@ -217,8 +219,7 @@ class YateRoutingGenerationVisitor:
 
         if YateRoutingGenerationVisitor.node_has_simple_routing(node):
             print("Node {} has simple routing".format(node))
-            return self._make_intermediate_result(target=
-                                                  self._make_calltarget(self.generate_simple_routing_string(node)))
+            return self._make_intermediate_result(target=self.generate_simple_routing_target(node))
         else:
             print("Node {} requires complex routing".format(node))
             # this will require a fork
@@ -255,7 +256,7 @@ class YateRoutingGenerationVisitor:
 
             # if this is a MULTIRING, the extension itself needs to be part of the first group
             if node.type == Extension.Type.MULTIRING:
-                fork_targets.insert(0, self._make_calltarget(self.generate_simple_routing_string(node)))
+                fork_targets.insert(0, self.generate_simple_routing_target(node))
             # we might need to issue a delayed forward
 
             if node.forwarding_mode == Extension.ForwardingMode.ENABLED:
@@ -296,11 +297,13 @@ class YateRoutingGenerationVisitor:
         # for the moment being. We could do this by introducing an optimizer stage that reshapes the tree :P
         return False
 
-    def generate_simple_routing_string(self, node: Extension):
+    def generate_simple_routing_target(self, node: Extension):
         if node.yate_id == self._local_yate_id:
-            return "lateroute/stage2-{}".format(node.extension)
+            return self._make_calltarget("lateroute/stage2-{}".format(node.extension))
         else:
-            return "sip/sip:{}@{}".format(node.extension, self._yates_dict[node.yate_id])
+            return self._make_calltarget("sip/sip:{}@{}"
+                                         .format(node.extension, self._yates_dict[node.yate_id].hostname),
+                                         {"oconnection_id": self._yates_dict[node.yate_id].voip_listener})
 
     def generate_deferred_routestring(self, path):
         return "lateroute/" + self.generate_node_route_string(path)

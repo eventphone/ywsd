@@ -1,10 +1,13 @@
 import asyncio
 
-from ywsd import settings
+from ywsd.settings import Settings
 from ywsd.objects import *
 from aiopg.sa import create_engine
 
 from ywsd.routing_tree import RoutingTree
+
+
+settings = Settings()
 
 
 async def reinstall_testdata():
@@ -30,9 +33,10 @@ async def exec_with_db(func):
 async def async_test_route(src, target, local_yate):
     async with create_engine(**settings.DB_CONFIG) as engine:
         async with engine.acquire() as conn:
-            tree = RoutingTree(src, target)
+            yates = await Yate.load_yates_dict(conn)
+            tree = RoutingTree(src, target, settings)
             await tree.discover_tree(conn)
-            tree.calculate_routing(local_yate, yates_dict)
+            tree.calculate_routing(local_yate, yates)
             return tree
 
 

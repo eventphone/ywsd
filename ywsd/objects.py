@@ -32,6 +32,14 @@ class Yate:
     def __init__(self, db_row):
         _plain_loader(self.FIELDS_PLAIN, db_row, self)
 
+    @classmethod
+    async def load_yates_dict(cls, db_connection):
+        yates_dict = {}
+        result = await db_connection.execute(cls.table.select())
+        async for row in result:
+            yates_dict[row.id] = cls(row)
+        return yates_dict
+
 
 class Extension:
     table = sa.Table("Extension", metadata,

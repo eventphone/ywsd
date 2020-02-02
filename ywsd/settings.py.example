@@ -1,6 +1,0 @@
-
-RINGBACK_TOP_DIRECTORY = "/tmp/ringback/"
-
-DB_CONFIG = {
-    "database": "ywsd"
-}

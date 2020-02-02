@@ -1,0 +1,9 @@
+RINGBACK_TOP_DIRECTORY: "/tmp/ringback/"
+
+DB_CONFIG:
+  database: "ywsd"
+
+LOCAL_YATE_ID: 2
+
+YATE_CONNECTION:
+  sockpath: /tmp/yate.sock

@@ -1,3 +1,4 @@
 sqlalchemy
 aiopg
 python-yate
+pyyaml
