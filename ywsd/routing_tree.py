@@ -1,7 +1,22 @@
 from enum import Enum
+from typing import List, Dict
+import os.path
 import uuid
 
-from ywsd.objects import Yate, Extension, CallgroupRank
+from ywsd.objects import Extension, CallgroupRank
+from ywsd import settings
+
+
+def calltargets_to_yate_callfork(call_targets: List['CallTarget']):
+    index = 1
+    params = {}
+    for target in call_targets:
+        current_prefix = "callto." + str(index)
+        params[current_prefix] = target.target
+        for key, value in target.parameters:
+            params[current_prefix + "." + key] = value
+        index += 1
+    return params
 
 
 class RoutingTree:
@@ -21,10 +36,39 @@ class RoutingTree:
         return visitor
 
     def calculate_routing(self, local_yate, yates_dict):
+        self._calculate_main_routing(local_yate, yates_dict)
+        self._provide_ringback()
+
+    def _calculate_main_routing(self, local_yate, yates_dict):
         visitor = YateRoutingGenerationVisitor(self, local_yate, yates_dict)
         result = visitor.calculate_routing()
         self.routing_result = result
         self.new_routing_cache_content = visitor.get_routing_cache_content()
+
+    def _provide_ringback(self):
+        if self.target.ringback is not None:
+            ringback_path = os.path.join(settings.RINGBACK_TOP_DIRECTORY, self.target.ringback)
+            if os.path.isfile(ringback_path):
+                if self.routing_result.is_simple:
+                    # we need to convert routing result into a simple fork
+                    self.routing_result = IntermediateRoutingResult(
+                        target=CallTarget("fork", self.routing_result.target.parameters),
+                        fork_targets=[
+                            self._make_ringback_target(ringback_path),
+                            self.routing_result.target
+                        ]
+                    )
+                else:
+                    # if the routing target is already a callfork, just prepend the ringback target to the first group
+                    self.routing_result.fork_targets.insert(0, self._make_ringback_target(ringback_path))
+
+    @staticmethod
+    def _make_ringback_target(path):
+        return CallTarget(
+            "wave/play/" + path,
+            {
+                "fork.calltype": "persistent"
+            })
 
     async def _load_source_and_target(self, db_connection):
         self.source = await Extension.load_extension(self.source_extension, db_connection)
@@ -98,43 +142,72 @@ class RoutingTreeDiscoveryVisitor:
                     member.active = False
 
 
+class CallTarget:
+    target = ""
+    parameters = {}
+
+    def __init__(self, target, parameters=None):
+        self.target = target
+        self.parameters = parameters if parameters is not None else {}
+
+    def __repr__(self):
+        return "<CallTarget {}, params={}>".format(self.target, self.parameters)
+
+
+class IntermediateRoutingResult:
+    class Type(Enum):
+        SIMPLE = 0
+        FORK = 1
+
+    def __init__(self, target: CallTarget = None, fork_targets: List['CallTarget'] = None):
+        if fork_targets is not None:
+            self.type = IntermediateRoutingResult.Type.FORK
+            self.fork_targets = fork_targets
+            self.target = target
+        else:
+            self.type = IntermediateRoutingResult.Type.SIMPLE
+            self.target = target
+            self.fork_targets = []
+
+    def __repr__(self):
+        fork_targets_str = "\n\t\t".join([repr(targ) for targ in self.fork_targets])
+        return "<IntermediateRoutingResult\n\ttarget={}\n\tfork_targets=\n\t\t{}\n>".format(self.target,
+                                                                                            fork_targets_str)
+
+    @property
+    def is_simple(self):
+        return self.type == IntermediateRoutingResult.Type.SIMPLE
+
+
 class YateRoutingGenerationVisitor:
-    class IntermediateRoutingResult:
-        class Type(Enum):
-            SIMPLE = 0
-            FORK = 1
-
-        def __init__(self, target=None, fork_targets=None):
-            if fork_targets is not None:
-                self.type = YateRoutingGenerationVisitor.IntermediateRoutingResult.Type.FORK
-                self.fork_targets = fork_targets
-                self.target = target
-            else:
-                self.type = YateRoutingGenerationVisitor.IntermediateRoutingResult.Type.SIMPLE
-                self.target = target
-
-        @property
-        def is_simple(self):
-            return self.type == YateRoutingGenerationVisitor.IntermediateRoutingResult.Type.SIMPLE
-
     def __init__(self, routing_tree: RoutingTree, local_yate_id: int, yates_dict: dict):
         self._routing_tree = routing_tree
         self._local_yate_id = local_yate_id
         self._yates_dict = yates_dict
-        self._lateroute_cache = {}
+        self._lateroute_cache: Dict[str, IntermediateRoutingResult] = {}
         self._x_eventphone_id = uuid.uuid4().hex
 
     def get_routing_cache_content(self):
         return self._lateroute_cache
 
-    def calculate_routing(self):
-        result = self._visit_for_route_calculation(self._routing_tree.target, [])
-        if result.is_simple:
-            return result.target, {}
-        else:
-            return "fork", YateRoutingGenerationVisitor.generate_yate_callfork_params(result.fork_targets)
+    def _make_intermediate_result(self, target: CallTarget, fork_targets=None):
+        return IntermediateRoutingResult(target=target, fork_targets=fork_targets)
 
-    def _visit_for_route_calculation(self, node: Extension, path: list):
+    def _make_calltarget(self, target: str, parameters: dict = None):
+        # write default parameters into the calltarget
+        if parameters is None:
+            parameters = {}
+        parameters["x_eventphone_id"] = self._x_eventphone_id
+        return CallTarget(target=target, parameters=parameters)
+
+    def _cache_intermediate_result(self, result: IntermediateRoutingResult):
+        if not result.is_simple:
+            self._lateroute_cache[result.target.target] = result
+
+    def calculate_routing(self):
+        return self._visit_for_route_calculation(self._routing_tree.target, [])
+
+    def _visit_for_route_calculation(self, node: Extension, path: list) -> IntermediateRoutingResult:
         local_path = path.copy()
         local_path.append(node.id)
 
@@ -144,8 +217,8 @@ class YateRoutingGenerationVisitor:
 
         if YateRoutingGenerationVisitor.node_has_simple_routing(node):
             print("Node {} has simple routing".format(node))
-            return YateRoutingGenerationVisitor.IntermediateRoutingResult(
-                target=self.generate_simple_routing_string(node))
+            return self._make_intermediate_result(target=
+                                                  self._make_calltarget(self.generate_simple_routing_string(node)))
         else:
             print("Node {} requires complex routing".format(node))
             # this will require a fork
@@ -164,32 +237,37 @@ class YateRoutingGenerationVisitor:
                         accumulated_delay += rank.delay
                     else:
                         separator = "|"
-                    if accumulated_delay >= self.forwarding_delay:
+                    if accumulated_delay >= node.forwarding_delay:
                         # all of those will not be called, as the forward takes effect now
                         break
-                    fork_targets.append(separator)
+                    # Do not generate default params on pseudo targets
+                    fork_targets.append(CallTarget(separator))
                 for member in rank.members:
                     # do not route inactive members
                     if not member.active:
                         continue
                     member_route = self._visit_for_route_calculation(member.extension, local_path)
+                    if member.type.is_special_calltype:
+                        member_route.target.params["fork.calltype"] = member.type.fork_calltype
                     # please note that we ignore the member modes for the time being
                     fork_targets.append(member_route.target)
+                    self._cache_intermediate_result(member_route)
+
             # if this is a MULTIRING, the extension itself needs to be part of the first group
             if node.type == Extension.Type.MULTIRING:
-                fork_targets.insert(0, self.generate_simple_routing_string(node))
+                fork_targets.insert(0, self._make_calltarget(self.generate_simple_routing_string(node)))
             # we might need to issue a delayed forward
+
             if node.forwarding_mode == Extension.ForwardingMode.ENABLED:
                 # this is forward with a delay. We want to know how to route there...
                 forwarding_route = self._visit_for_route_calculation(node.forwarding_extension, local_path)
                 fwd_delay = node.forwarding_delay - accumulated_delay
-                fork_targets.append("|drop={}".format(fwd_delay))
+                fork_targets.append(CallTarget("|drop={}".format(fwd_delay)))
                 fork_targets.append(forwarding_route.target)
+                self._cache_intermediate_result(forwarding_route)
             
-            lateroute_address = self.generate_deferred_routestring(local_path)
-            self._lateroute_cache[lateroute_address] = fork_targets
-            return YateRoutingGenerationVisitor.IntermediateRoutingResult(fork_targets=fork_targets,
-                                                                          target=lateroute_address)
+            return self._make_intermediate_result(
+                fork_targets=fork_targets, target=self._make_calltarget(self.generate_deferred_routestring(local_path)))
 
     @staticmethod
     def node_has_simple_routing(node: Extension):
@@ -231,12 +309,3 @@ class YateRoutingGenerationVisitor:
         joined_path = "-".join(map(str, path))
         return "stage1-{}-{}".format(self._x_eventphone_id, joined_path)
 
-    @staticmethod
-    def generate_yate_callfork_params(fork_targets):
-        index = 1
-        params = {}
-        for target in fork_targets:
-            current_prefix = "callto." + str(index)
-            params[current_prefix] = target
-            index += 1
-        return params

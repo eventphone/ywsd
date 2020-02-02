@@ -166,11 +166,20 @@ class CallgroupRank:
         AUXILIARY = 1
         PERSISTENT = 2
 
+        @property
+        def is_special_calltype(self):
+            return self != CallgroupRank.RankMemberType.DEFAULT
+
+        @property
+        def fork_calltype(self):
+            return self.name.lower()
+
     class Member:
         def __init__(self, type, active, extension):
             self.type = type
             self.active = active
             self.extension = extension
+
         def __repr__(self):
             res = "<({})Member: {}".format(self.type, self.extension)
             if self.active:
