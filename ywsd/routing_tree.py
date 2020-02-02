@@ -56,7 +56,12 @@ class RoutingTree:
 
     def _calculate_eventphone_parameters(self):
         # push parameters here like faked-caller-id or caller-language
-        return {}
+        eventphone_parameters = {}
+        if self.source.outgoing_extension is not None and self.source.outgoing_extension != "":
+            eventphone_parameters["osip_X-Masking-Extension"] = self.source.outgoing_extension
+            eventphone_parameters["osip_X-Masking-Name"] = self.source.outgoing_name
+        eventphone_parameters["osip_X-Caller-Language"] = self.source.lang
+        return eventphone_parameters
 
     def _populate_eventphone_parameters(self):
         eventphone_parameters = self._calculate_eventphone_parameters()
@@ -203,6 +208,7 @@ class YateRoutingGenerationVisitor:
         if parameters is None:
             parameters = {}
         parameters["x_eventphone_id"] = self._x_eventphone_id
+        parameters["osip_X-Eventphone-Id"] = self._x_eventphone_id
         return CallTarget(target=target, parameters=parameters)
 
     def _cache_intermediate_result(self, result: IntermediateRoutingResult):
@@ -306,7 +312,9 @@ class YateRoutingGenerationVisitor:
         else:
             return self._make_calltarget("sip/sip:{}@{}"
                                          .format(node.extension, self._yates_dict[node.yate_id].hostname),
-                                         {"oconnection_id": self._yates_dict[node.yate_id].voip_listener})
+                                         {
+                                             "oconnection_id": self._yates_dict[node.yate_id].voip_listener,
+                                         })
 
     def generate_deferred_routestring(self, path):
         return "lateroute/" + self.generate_node_route_string(path)
