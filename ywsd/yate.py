@@ -9,9 +9,9 @@ def encode_routing_result(msg: Message, result: IntermediateRoutingResult):
     global_parameters = result.target.parameters
     msg.params.update(global_parameters)
     if result.is_simple:
-        msg.result = result.target.target
+        msg.return_value = result.target.target
     else:
-        msg.result = "fork"
+        msg.return_value = "fork"
         fork_parameters = calltargets_to_callfork_params(result.fork_targets, global_parameters)
         msg.params.update(fork_parameters)
     return msg
