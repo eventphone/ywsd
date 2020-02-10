@@ -15,7 +15,7 @@ from ywsd.routing_tree import RoutingTree, IntermediateRoutingResult
 from ywsd.settings import Settings
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 
 class YateStage1RoutingEngine(YateAsync):
@@ -58,7 +58,7 @@ class YateStage1RoutingEngine(YateAsync):
                 self._yates_dict = await Yate.load_yates_dict(db_connection)
 
             logging.info("Registering for routing messages")
-            if not await self.register_message_handler_async("call.route", self._call_route_handler, 90):
+            if not await self.register_message_handler_async("call.route", self._call_route_handler, 50):
                 logging.error("Cannot register for call.route. Terminating...")
                 return
 
@@ -68,7 +68,8 @@ class YateStage1RoutingEngine(YateAsync):
         self._db_engine = None
 
     def _call_route_handler(self, msg: Message) -> Optional[bool]:
-        called = msg.params.called("called")
+        logging.debug("Asked to route message: {}".format(msg.params))
+        called = msg.params.get("called")
         if called is None or called == "":
             return False
         if called.isdigit():
@@ -106,11 +107,13 @@ class RoutingTask:
             # we do not process messages without a caller
             self._yate.answer_message(self._message, False)
         # TODO: Do we need to clean caller somehow before processing?
+        logging.debug("Routing {} to {}".format(caller, called))
         routing_tree = RoutingTree(caller,called, self._yate.settings)
         async with self._yate.db_engine.acquire() as db_connection:
             await routing_tree.discover_tree(db_connection)
         routing_result, routing_cache_entries = routing_tree.calculate_routing(self._yate.settings.LOCAL_YATE_ID,
                                                                                self._yate.yates_dict)
+        logging.debug("Routing result:\n{}\n{}".format(routing_result, routing_cache_entries))
         await self._yate.store_cache_infos(routing_cache_entries)
         result_message = ywsd.yate.encode_routing_result(self._message, routing_result)
         self._yate.answer_message(result_message, True)
@@ -128,4 +131,5 @@ def main():
 
 
 if __name__ == "__main__":
+    logging.debug("Debug logging enabled.")
     main()

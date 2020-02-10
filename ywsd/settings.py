@@ -5,7 +5,7 @@ class Settings:
         if config_file is None:
             config_file = "routing_engine.yaml"
         with open(config_file, "r") as f:
-            self.config = yaml.load(f, Loader=yaml.CLoader)
+            self.config = yaml.load(f, Loader=yaml.Loader)
 
     def __getattr__(self, item):
         return self.config.get(item)
