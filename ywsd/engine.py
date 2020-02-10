@@ -15,6 +15,8 @@ from ywsd.routing_tree import RoutingTree, IntermediateRoutingResult, RoutingErr
 from ywsd.settings import Settings
 
 
+logging.basicConfig(level=logging.DEBUG)
+
 class YateStage1RoutingEngine(YateAsync):
     def __init__(self, *args, **kwargs):
         self._settings = kwargs.pop("settings")
@@ -123,7 +125,7 @@ class RoutingTask:
 def main():
     parser = argparse.ArgumentParser(description='Yate Stage1 Routing Engine')
     parser.add_argument("--config", type=str, help="Config file to use.", default="routing_engine.yaml")
-    parser.add_argument("--verbose", type=bool, help="Print out debug logs.", action="store_true")
+    parser.add_argument("--verbose", help="Print out debug logs.", action="store_true")
 
     args = parser.parse_args()
     if args.verbose:
