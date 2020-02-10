@@ -11,11 +11,8 @@ from yate.protocol import Message
 import ywsd.yate
 from ywsd.objects import Yate
 from ywsd.routing_cache import PythonDictRoutingCache, RoutingCacheBase
-from ywsd.routing_tree import RoutingTree, IntermediateRoutingResult
+from ywsd.routing_tree import RoutingTree, IntermediateRoutingResult, RoutingError
 from ywsd.settings import Settings
-
-
-logging.basicConfig(level=logging.DEBUG)
 
 
 class YateStage1RoutingEngine(YateAsync):
@@ -108,12 +105,16 @@ class RoutingTask:
             self._yate.answer_message(self._message, False)
         # TODO: Do we need to clean caller somehow before processing?
         logging.debug("Routing {} to {}".format(caller, called))
-        routing_tree = RoutingTree(caller,called, self._yate.settings)
-        async with self._yate.db_engine.acquire() as db_connection:
-            await routing_tree.discover_tree(db_connection)
-        routing_result, routing_cache_entries = routing_tree.calculate_routing(self._yate.settings.LOCAL_YATE_ID,
-                                                                               self._yate.yates_dict)
-        logging.debug("Routing result:\n{}\n{}".format(routing_result, routing_cache_entries))
+        try:
+            routing_tree = RoutingTree(caller, called, self._yate.settings)
+            async with self._yate.db_engine.acquire() as db_connection:
+                await routing_tree.discover_tree(db_connection)
+            routing_result, routing_cache_entries = routing_tree.calculate_routing(self._yate.settings.LOCAL_YATE_ID,
+                                                                                   self._yate.yates_dict)
+            logging.debug("Routing result:\n{}\n{}".format(routing_result, routing_cache_entries))
+        except RoutingError as e:
+            self._message.params["error"] = e.error_code
+            logging.info("Routing {} to {} failed: {}".format(caller, called, e.message))
         await self._yate.store_cache_infos(routing_cache_entries)
         result_message = ywsd.yate.encode_routing_result(self._message, routing_result)
         self._yate.answer_message(result_message, True)
@@ -122,8 +123,14 @@ class RoutingTask:
 def main():
     parser = argparse.ArgumentParser(description='Yate Stage1 Routing Engine')
     parser.add_argument("--config", type=str, help="Config file to use.", default="routing_engine.yaml")
+    parser.add_argument("--verbose", type=bool, help="Print out debug logs.", action="store_true")
 
     args = parser.parse_args()
+    if args.verbose:
+        logging.basicConfig(level=logging.INFO)
+    else:
+        logging.basicConfig(level=logging.DEBUG)
+
     settings = Settings(args.config)
     yate_connection = settings.YATE_CONNECTION
     app = YateStage1RoutingEngine(settings=settings, **yate_connection)

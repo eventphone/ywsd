@@ -3,7 +3,13 @@ from typing import List, Dict, Tuple
 import os.path
 import uuid
 
-from ywsd.objects import Extension, CallgroupRank, Yate
+from ywsd.objects import Extension, CallgroupRank, Yate, DoesNotExist
+
+
+class RoutingError(Exception):
+    def __init__(self, error_code, message):
+        self.error_code = error_code
+        self.message = message
 
 
 class RoutingTree:
@@ -80,8 +86,14 @@ class RoutingTree:
             })
 
     async def _load_source_and_target(self, db_connection):
-        self.source = await Extension.load_extension(self.source_extension, db_connection)
-        self.target = await Extension.load_extension(self.target_extension, db_connection)
+        try:
+            self.source = await Extension.load_extension(self.source_extension, db_connection)
+        except DoesNotExist:
+            self.source = Extension.create_external(self.source_extension)
+        try:
+            self.target = await Extension.load_extension(self.target_extension, db_connection)
+        except DoesNotExist:
+            raise RoutingError("noroute", "Routing target was not found")
 
 
 class RoutingTreeDiscoveryVisitor:

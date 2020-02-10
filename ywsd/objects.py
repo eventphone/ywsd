@@ -1,3 +1,5 @@
+import asyncio
+from collections import namedtuple
 from enum import Enum
 
 import sqlalchemy as sa
@@ -92,6 +94,26 @@ class Extension:
 
     def __repr__(self):
         return "<Extension {}, name={}, type={}>".format(self.extension, self.name, self.type)
+
+    @classmethod
+    def create_external(cls, extension):
+        params = {
+            "id": None,
+            "yate_id": None,
+            "extension": extension,
+            "name": "External",
+            "outgoing_extension": None,
+            "outgoing_name": None,
+            "ringback": None,
+            "forwarding_delay": None,
+            "forwarding_extension_id": None,
+            "lang": None,
+            "type": "EXTERNAL",
+            "dect_displaymode": None,
+            "forwarding_mode": "DISABLED",
+        }
+
+        return cls(namedtuple('Ext_row', params.keys())(*params.values()))
 
     @classmethod
     async def load_extension(cls, extension, db_connection):
@@ -205,6 +227,18 @@ class CallgroupRank:
             .format(self.id, self.extension_id, self.mode, self.index, self.mode, self.delay)
 
 
+async def initialize_database(connection):
+    await connection.execute("CREATE TYPE extension_type AS ENUM('SIMPLE', 'MULTIRING', 'GROUP', 'EXTERNAL')")
+    await connection.execute("CREATE TYPE dect_displaymode AS ENUM('NUMBER', 'NUMBER_AND_NAME', 'NAME')")
+    await connection.execute("CREATE TYPE forwarding_mode AS ENUM('DISABLED', 'ENABLED', 'ON_BUSY')")
+    await connection.execute("CREATE TYPE callgroup_rank_mode AS ENUM('DEFAULT', 'NEXT', 'DROP')")
+    await connection.execute("CREATE TYPE callgroup_rankmember_type AS ENUM('DEFAULT', 'AUXILIARY', 'PERSISTENT')")
+
+    await connection.execute(CreateTable(Yate.table))
+    await connection.execute(CreateTable(Extension.table))
+    await connection.execute(CreateTable(CallgroupRank.table))
+    await connection.execute(CreateTable(CallgroupRank.member_table))
+
 async def regenerate_database_objects(connection):
     await connection.execute("DROP TABLE IF EXISTS \"Yate\" CASCADE")
     await connection.execute("DROP TABLE IF EXISTS \"Extension\" CASCADE")
@@ -212,17 +246,24 @@ async def regenerate_database_objects(connection):
     await connection.execute("DROP TABLE IF EXISTS \"CallgroupRankMember\" CASCADE")
 
     await connection.execute("DROP TYPE IF EXISTS extension_type")
-    await connection.execute("CREATE TYPE extension_type AS ENUM('SIMPLE', 'MULTIRING', 'GROUP', 'EXTERNAL')")
     await connection.execute("DROP TYPE IF EXISTS dect_displaymode")
-    await connection.execute("CREATE TYPE dect_displaymode AS ENUM('NUMBER', 'NUMBER_AND_NAME', 'NAME')")
     await connection.execute("DROP TYPE IF EXISTS forwarding_mode")
-    await connection.execute("CREATE TYPE forwarding_mode AS ENUM('DISABLED', 'ENABLED', 'ON_BUSY')")
     await connection.execute("DROP TYPE IF EXISTS callgroup_rank_mode")
-    await connection.execute("CREATE TYPE callgroup_rank_mode AS ENUM('DEFAULT', 'NEXT', 'DROP')")
     await connection.execute("DROP TYPE IF EXISTS callgroup_rankmember_type")
-    await connection.execute("CREATE TYPE callgroup_rankmember_type AS ENUM('DEFAULT', 'AUXILIARY', 'PERSISTENT')")
 
-    await connection.execute(CreateTable(Yate.table))
-    await connection.execute(CreateTable(Extension.table))
-    await connection.execute(CreateTable(CallgroupRank.table))
-    await connection.execute(CreateTable(CallgroupRank.member_table))
+    await initialize_database(connection)
+
+
+async def main():
+    # init database
+    import ywsd.settings
+    from aiopg.sa import create_engine
+
+    settings = ywsd.settings.Settings()
+    async with create_engine(**settings.DB_CONFIG) as engine:
+        async with engine.acquire() as conn:
+            await initialize_database(conn)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
