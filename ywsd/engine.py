@@ -9,13 +9,15 @@ from yate.asyncio import YateAsync
 from yate.protocol import Message
 
 import ywsd.yate
-from ywsd.objects import Yate
+from ywsd.objects import Yate, Extension
+from ywsd.util import class_from_dotted_string
 from ywsd.routing_cache import PythonDictRoutingCache, RoutingCacheBase
 from ywsd.routing_tree import RoutingTree, IntermediateRoutingResult, RoutingError
 from ywsd.settings import Settings
 
 
 logging.basicConfig(level=logging.DEBUG)
+
 
 class YateStage1RoutingEngine(YateAsync):
     def __init__(self, *args, **kwargs):
@@ -47,7 +49,7 @@ class YateStage1RoutingEngine(YateAsync):
         self._shutdown_future = asyncio.get_event_loop().create_future()
         asyncio.get_event_loop().add_signal_handler(signal.SIGINT, lambda: self._shutdown_future.set_result(True))
         logging.info("Initializing routing cache")
-        self._routing_cache = PythonDictRoutingCache()
+        self._routing_cache = class_from_dotted_string(self.settings.CACHE_IMPLEMENTATION)(self, self.settings)
 
         logging.info("Initializing database engine")
         async with aiopg.sa.create_engine(**self._settings.DB_CONFIG) as db_engine:
@@ -106,6 +108,9 @@ class RoutingTask:
             # we do not process messages without a caller
             self._yate.answer_message(self._message, False)
         # TODO: Do we need to clean caller somehow before processing?
+        if self._message.params.get("connection_id", "") != self._yate.settings.INTERNAL_YATE_LISTENER:
+            caller = Extension.create_external(caller)
+
         logging.debug("Routing {} to {}".format(caller, called))
         try:
             routing_tree = RoutingTree(caller, called, self._yate.settings)
@@ -133,6 +138,8 @@ def main():
     else:
         logging.basicConfig(level=logging.DEBUG)
 
+    logging.debug("Debug logging enabled.")
+
     settings = Settings(args.config)
     yate_connection = settings.YATE_CONNECTION
     app = YateStage1RoutingEngine(settings=settings, **yate_connection)
@@ -140,5 +147,4 @@ def main():
 
 
 if __name__ == "__main__":
-    logging.debug("Debug logging enabled.")
     main()

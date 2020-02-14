@@ -4,7 +4,7 @@ from enum import Enum
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ENUM
-from sqlalchemy.sql.ddl import CreateTable
+from sqlalchemy.sql.ddl import CreateTable, CreateIndex
 
 metadata = sa.MetaData()
 
@@ -89,19 +89,21 @@ class Extension:
         _plain_loader(self.FIELDS_PLAIN, db_row, self, prefix=prefix)
         _transform_loader(self.FIELDS_TRANSFORM, db_row, self, prefix=prefix)
 
-        self.callgroup_ranks = []
+        self.fork_ranks = []
         self.forwarding_extension = None
 
     def __repr__(self):
         return "<Extension {}, name={}, type={}>".format(self.extension, self.name, self.type)
 
     @classmethod
-    def create_external(cls, extension):
+    def create_external(cls, extension, external_name=None):
+        if external_name is None:
+            external_name = "External"
         params = {
             "id": None,
             "yate_id": None,
             "extension": extension,
-            "name": "External",
+            "name": external_name,
             "outgoing_extension": None,
             "outgoing_name": None,
             "ringback": None,
@@ -112,7 +114,25 @@ class Extension:
             "dect_displaymode": None,
             "forwarding_mode": "DISABLED",
         }
+        return cls(namedtuple('Ext_row', params.keys())(*params.values()))
 
+    @classmethod
+    def create_unknown(cls, extension):
+        params = {
+            "id": None,
+            "yate_id": None,
+            "extension": extension,
+            "name": "Unknown",
+            "outgoing_extension": None,
+            "outgoing_name": None,
+            "ringback": None,
+            "forwarding_delay": None,
+            "forwarding_extension_id": None,
+            "lang": None,
+            "type": "SIMPLE",
+            "dect_displaymode": None,
+            "forwarding_mode": "DISABLED",
+        }
         return cls(namedtuple('Ext_row', params.keys())(*params.values()))
 
     @classmethod
@@ -131,24 +151,23 @@ class Extension:
 
     async def populate_callgroup_ranks(self, db_connection):
         result = await db_connection.execute(
-              sa.select([CallgroupRank.table, CallgroupRank.member_table, Extension.table], use_labels=True)
-                .where(CallgroupRank.table.c.extension_id == self.id)
-                .where(CallgroupRank.member_table.c.extension_id == Extension.table.c.id)
-                .where(CallgroupRank.table.c.id == CallgroupRank.member_table.c.callgrouprank_id)
-                .order_by(CallgroupRank.table.c.index)
+              sa.select([ForkRank.table, ForkRank.member_table, Extension.table], use_labels=True)
+                .where(ForkRank.table.c.extension_id == self.id)
+                .where(ForkRank.member_table.c.extension_id == Extension.table.c.id)
+                .where(ForkRank.table.c.id == ForkRank.member_table.c.forkrank_id)
+                .order_by(ForkRank.table.c.index)
         )
-        self.callgroup_ranks = []
+        self.fork_ranks = []
         current_rank_id = None
         current_rank = None
         async for row in result:
-            if current_rank_id != row.CallgroupRank_id:
-                print("There is a new rank!")
-                current_rank_id = row.CallgroupRank_id
-                current_rank = CallgroupRank(row, prefix="CallgroupRank_")
-                self.callgroup_ranks.append(current_rank)
-            member = CallgroupRank.Member(CallgroupRank.RankMemberType[row.CallgroupRankMember_rankmember_type],
-                                          row.CallgroupRankMember_active,
-                                          Extension(row, prefix="Extension_"))
+            if current_rank_id != row.ForkRank_id:
+                current_rank_id = row.ForkRank_id
+                current_rank = ForkRank(row, prefix="ForkRank_")
+                self.fork_ranks.append(current_rank)
+            member = ForkRank.Member(ForkRank.RankMemberType[row.ForkRankMember_rankmember_type],
+                                     row.ForkRankMember_active,
+                                     Extension(row, prefix="Extension_"))
             current_rank.members.append(member)
 
     @property
@@ -157,33 +176,33 @@ class Extension:
 
     @property
     def has_active_group_members(self):
-        for rank in self.callgroup_ranks:
+        for rank in self.fork_ranks:
             if any([m.active for m in rank.members]):
                 return True
         return False
 
 
-class CallgroupRank:
-    table = sa.Table("CallgroupRank", metadata,
+class ForkRank:
+    table = sa.Table("ForkRank", metadata,
                      sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
                      sa.Column("extension_id", sa.Integer, sa.ForeignKey("Extension.id"), nullable=False, index=True),
                      sa.Column("index", sa.Integer, nullable=False),
-                     sa.Column("mode", ENUM("DEFAULT", "NEXT", "DROP", name="callgroup_rank_mode"), nullable=False),
+                     sa.Column("mode", ENUM("DEFAULT", "NEXT", "DROP", name="fork_rank_mode"), nullable=False),
                      sa.Column("delay", sa.Integer)
                      )
     FIELDS_PLAIN = ("id", "extension_id", "index", "delay")
     FIELDS_TRANSFORM = (
-        ("mode", lambda x: CallgroupRank.Mode[x]),
+        ("mode", lambda x: ForkRank.Mode[x]),
     )
-    member_table = sa.Table("CallgroupRankMember", metadata,
-                            sa.Column("callgrouprank_id", sa.Integer, sa.ForeignKey("CallgroupRank.id"),
+    member_table = sa.Table("ForkRankMember", metadata,
+                            sa.Column("forkrank_id", sa.Integer, sa.ForeignKey("ForkRank.id"),
                                       nullable=False, index=True),
                             sa.Column("extension_id", sa.Integer, sa.ForeignKey("Extension.id"),
                                       nullable=False),
                             sa.Column("rankmember_type", ENUM("DEFAULT", "AUXILIARY", "PERSISTENT",
-                                                              name="callgroup_rankmember_type"), nullable=False),
+                                                              name="fork_rankmember_type"), nullable=False),
                             sa.Column("active", sa.Boolean, nullable=False),
-                            sa.UniqueConstraint("callgrouprank_id", "extension_id", name="uniq1")
+                            sa.UniqueConstraint("forkrank_id", "extension_id", name="uniq1")
                             )
 
     class Mode(Enum):
@@ -198,7 +217,7 @@ class CallgroupRank:
 
         @property
         def is_special_calltype(self):
-            return self != CallgroupRank.RankMemberType.DEFAULT
+            return self != ForkRank.RankMemberType.DEFAULT
 
         @property
         def fork_calltype(self):
@@ -223,7 +242,7 @@ class CallgroupRank:
         self.members = []
 
     def __repr__(self):
-        return "<CallgroupRank id={}, extension_id={}, index={}, mode={}, delay={}>"\
+        return "<ForkRank id={}, extension_id={}, index={}, mode={}, delay={}>"\
             .format(self.id, self.extension_id, self.mode, self.index, self.mode, self.delay)
 
 
@@ -231,25 +250,25 @@ async def initialize_database(connection):
     await connection.execute("CREATE TYPE extension_type AS ENUM('SIMPLE', 'MULTIRING', 'GROUP', 'EXTERNAL')")
     await connection.execute("CREATE TYPE dect_displaymode AS ENUM('NUMBER', 'NUMBER_AND_NAME', 'NAME')")
     await connection.execute("CREATE TYPE forwarding_mode AS ENUM('DISABLED', 'ENABLED', 'ON_BUSY')")
-    await connection.execute("CREATE TYPE callgroup_rank_mode AS ENUM('DEFAULT', 'NEXT', 'DROP')")
-    await connection.execute("CREATE TYPE callgroup_rankmember_type AS ENUM('DEFAULT', 'AUXILIARY', 'PERSISTENT')")
+    await connection.execute("CREATE TYPE fork_rank_mode AS ENUM('DEFAULT', 'NEXT', 'DROP')")
+    await connection.execute("CREATE TYPE fork_rankmember_type AS ENUM('DEFAULT', 'AUXILIARY', 'PERSISTENT')")
 
     await connection.execute(CreateTable(Yate.table))
     await connection.execute(CreateTable(Extension.table))
-    await connection.execute(CreateTable(CallgroupRank.table))
-    await connection.execute(CreateTable(CallgroupRank.member_table))
+    await connection.execute(CreateTable(ForkRank.table))
+    await connection.execute(CreateTable(ForkRank.member_table))
 
 async def regenerate_database_objects(connection):
     await connection.execute("DROP TABLE IF EXISTS \"Yate\" CASCADE")
     await connection.execute("DROP TABLE IF EXISTS \"Extension\" CASCADE")
-    await connection.execute("DROP TABLE IF EXISTS \"CallgroupRank\" CASCADE")
-    await connection.execute("DROP TABLE IF EXISTS \"CallgroupRankMember\" CASCADE")
+    await connection.execute("DROP TABLE IF EXISTS \"ForkRank\" CASCADE")
+    await connection.execute("DROP TABLE IF EXISTS \"ForkRankMember\" CASCADE")
 
     await connection.execute("DROP TYPE IF EXISTS extension_type")
     await connection.execute("DROP TYPE IF EXISTS dect_displaymode")
     await connection.execute("DROP TYPE IF EXISTS forwarding_mode")
-    await connection.execute("DROP TYPE IF EXISTS callgroup_rank_mode")
-    await connection.execute("DROP TYPE IF EXISTS callgroup_rankmember_type")
+    await connection.execute("DROP TYPE IF EXISTS fork_rank_mode")
+    await connection.execute("DROP TYPE IF EXISTS fork_rankmember_type")
 
     await initialize_database(connection)
 

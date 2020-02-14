@@ -128,7 +128,7 @@ async def write_testdata(conn):
         exts[row.extension] = row.id
     print(repr(exts))
 
-    await conn.execute(CallgroupRank.table.insert().values([
+    await conn.execute(ForkRank.table.insert().values([
         {
             "extension_id": exts["2000"],
             "index": 0,
@@ -142,39 +142,39 @@ async def write_testdata(conn):
     ]))
 
     cgr = {}
-    async for row in conn.execute(CallgroupRank.table.select()):
+    async for row in conn.execute(ForkRank.table.select()):
         cgr[row.extension_id] = row.id
     print(repr(cgr))
 
-    await conn.execute(CallgroupRank.member_table.insert().values([
+    await conn.execute(ForkRank.member_table.insert().values([
         {
-            "callgrouprank_id": cgr[exts["2000"]],
+            "forkrank_id": cgr[exts["2000"]],
             "extension_id": exts["2001"],
             "rankmember_type": "DEFAULT",
             "active": True
         },
         {
-            "callgrouprank_id": cgr[exts["2000"]],
+            "forkrank_id": cgr[exts["2000"]],
             "extension_id": exts["2002"],
             "rankmember_type": "DEFAULT",
             "active": True
         },
         {
-            "callgrouprank_id": cgr[exts["2000"]],
+            "forkrank_id": cgr[exts["2000"]],
             "extension_id": exts["2004"],
             "rankmember_type": "DEFAULT",
             "active": True
         },
         {
-            "callgrouprank_id": cgr[exts["2000"]],
+            "forkrank_id": cgr[exts["2000"]],
             "extension_id": exts["2042"],
             "rankmember_type": "DEFAULT",
             "active": True
         },
         {
-            "callgrouprank_id": cgr[exts["2001"]],
+            "forkrank_id": cgr[exts["2001"]],
             "extension_id": exts["2005"],
             "rankmember_type": "DEFAULT",
             "active": True
-        },
+        }
     ]))

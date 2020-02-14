@@ -3,6 +3,9 @@ from ywsd.routing_tree import IntermediateRoutingResult
 
 
 class RoutingCacheBase:
+    def __init__(self, yate, settings):
+        pass
+
     async def retrieve(self, target) -> Optional[IntermediateRoutingResult]:
         pass
 
@@ -11,7 +14,7 @@ class RoutingCacheBase:
 
 
 class PythonDictRoutingCache:
-    def __init__(self):
+    def __init__(self, yate, settings):
         self._cache = {}
 
     async def retrieve(self, target) -> Optional[IntermediateRoutingResult]:

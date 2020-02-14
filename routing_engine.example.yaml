@@ -5,5 +5,9 @@ DB_CONFIG:
 
 LOCAL_YATE_ID: 2
 
+INTERNAL_YATE_LISTENER: voip
+
+CACHE_IMPLEMENTATION: "ywsd.routing_cache.PythonDictRoutingCache"
+
 YATE_CONNECTION:
   sockpath: /tmp/yate.sock

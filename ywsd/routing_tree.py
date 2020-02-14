@@ -3,7 +3,7 @@ from typing import List, Dict, Tuple
 import os.path
 import uuid
 
-from ywsd.objects import Extension, CallgroupRank, Yate, DoesNotExist
+from ywsd.objects import Extension, ForkRank, Yate, DoesNotExist
 
 
 class RoutingError(Exception):
@@ -87,9 +87,10 @@ class RoutingTree:
 
     async def _load_source_and_target(self, db_connection):
         try:
-            self.source = await Extension.load_extension(self.source_extension, db_connection)
+            if not isinstance(self.source, Extension):
+                self.source = await Extension.load_extension(self.source_extension, db_connection)
         except DoesNotExist:
-            self.source = Extension.create_external(self.source_extension)
+            self.source = Extension.create_unknown(self.source_extension)
         try:
             self.target = await Extension.load_extension(self.target_extension, db_connection)
         except DoesNotExist:
@@ -148,8 +149,8 @@ class RoutingTreeDiscoveryVisitor:
                 self._log("Discovery aborted for forward to {}, was already present. Discovery state: {}\n"
                           "Disabling Forward".format(fwd, path_extensions_local))
                 node.forwarding_mode = Extension.ForwardingMode.DISABLED
-        for callgroup_rank in node.callgroup_ranks:
-            for member in callgroup_rank.members:
+        for fork_rank in node.fork_ranks:
+            for member in fork_rank.members:
                 # do not discover inactive members
                 if not member.active:
                     continue
@@ -160,7 +161,7 @@ class RoutingTreeDiscoveryVisitor:
                     self._pruned = True
                     self._log("Discovery aborted for {} in {}, was already present. Discovery state: {}\n"
                               "Temporarily disable membership for this routing."
-                              .format(ext, callgroup_rank, path_extensions_local))
+                              .format(ext, fork_rank, path_extensions_local))
                     member.active = False
 
 
@@ -171,6 +172,10 @@ class CallTarget:
     def __init__(self, target, parameters=None):
         self.target = target
         self.parameters = parameters if parameters is not None else {}
+
+    @property
+    def is_separator(self):
+        return self.target.startswith("|")
 
     def __repr__(self):
         return "<CallTarget {}, params={}>".format(self.target, self.parameters)
@@ -239,22 +244,19 @@ class YateRoutingGenerationVisitor:
             return self._visit_for_route_calculation(node.forwarding_extension, local_path)
 
         if YateRoutingGenerationVisitor.node_has_simple_routing(node):
-            print("Node {} has simple routing".format(node))
             return self._make_intermediate_result(target=self.generate_simple_routing_target(node))
         else:
-            print("Node {} requires complex routing".format(node))
             # this will require a fork
-
             # go through the callgroup ranks to issue the groups of the fork
             fork_targets = []
             accumulated_delay = 0
-            for rank in node.callgroup_ranks:
+            for rank in node.fork_ranks:
                 if fork_targets:
                     # this is not the first rank, so we need to generate a separator
-                    if rank.mode == CallgroupRank.Mode.DROP:
+                    if rank.mode == ForkRank.Mode.DROP:
                         separator = "|drop={}".format(rank.delay)
                         accumulated_delay += rank.delay
-                    elif rank.mode == CallgroupRank.Mode.NEXT:
+                    elif rank.mode == ForkRank.Mode.NEXT:
                         separator = "|next={}".format(rank.delay)
                         accumulated_delay += rank.delay
                     else:
@@ -287,7 +289,9 @@ class YateRoutingGenerationVisitor:
                 fork_targets.append(CallTarget("|drop={}".format(fwd_delay)))
                 fork_targets.append(forwarding_route.target)
                 self._cache_intermediate_result(forwarding_route)
-            
+            # TODO: Forwarding mode ON_BUSY needs to be implemented
+            #  Signal to the original destination that there should be no call waiting for this call
+
             return self._make_intermediate_result(
                 fork_targets=fork_targets, target=self._make_calltarget(self.generate_deferred_routestring(local_path)))
 
