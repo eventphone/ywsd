@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import List, Dict, Tuple
+import json
 import os.path
 import uuid
 
@@ -22,6 +23,7 @@ class RoutingTree:
 
         self.routing_result = None
         self.new_routing_cache_content = {}
+        self.all_routing_results = {}
 
     async def discover_tree(self, db_connection):
         await self._load_source_and_target(db_connection)
@@ -37,10 +39,14 @@ class RoutingTree:
 
         return self.routing_result, self.new_routing_cache_content
 
+    def serialized_tree(self):
+        return self.target.serialize()
+
     def _calculate_main_routing(self, local_yate, yates_dict):
         visitor = YateRoutingGenerationVisitor(self, local_yate, yates_dict)
         result = visitor.calculate_routing()
         self.routing_result = result
+        self.all_routing_results = visitor.get_routing_results()
         self.new_routing_cache_content = visitor.get_routing_cache_content()
 
     def _provide_ringback(self):
@@ -93,6 +99,7 @@ class RoutingTree:
             self.source = Extension.create_unknown(self.source_extension)
         try:
             self.target = await Extension.load_extension(self.target_extension, db_connection)
+            self.target.tree_identifier = str(self.target.id)
         except DoesNotExist:
             raise RoutingError("noroute", "Routing target was not found")
 
@@ -101,7 +108,6 @@ class RoutingTreeDiscoveryVisitor:
     def __init__(self, root_node, excluded_targets, max_depth=10):
         self._root_node = root_node
         self._excluded_targets = set(excluded_targets)
-        self._discovery_log = []
         self._max_depth = max_depth
         self._failed = False
         self._pruned = False
@@ -114,18 +120,12 @@ class RoutingTreeDiscoveryVisitor:
     def pruned(self):
         return self._pruned
 
-    def get_log(self):
-        return self._discovery_log
-
-    def _log(self, msg, level=None):
-        self._discovery_log.append(msg)
-
     async def discover_tree(self, db_connection):
         await self._visit(self._root_node, 0, list(self._excluded_targets), db_connection)
 
     async def _visit(self, node: Extension, depth: int, path_extensions: list, db_connection):
         if depth >= self._max_depth:
-            self._log("Routing aborted due to depth limit at {}".format(node))
+            node.routing_log("Routing aborted due to depth limit at {}".format(node), "ERROR")
             self._failed = True
             return
 
@@ -137,7 +137,7 @@ class RoutingTreeDiscoveryVisitor:
         if node.type in (Extension.Type.GROUP, Extension.Type.MULTIRING) \
                 and (node.forwarding_mode != Extension.ForwardingMode.ENABLED or node.forwarding_delay > 0):
             # we discover group members if there is no immediate forward
-            await node.populate_callgroup_ranks(db_connection)
+            await node.populate_fork_ranks(db_connection)
         # now we visit the populated children if they haven't been already discovered
         if node.forwarding_extension is not None:
             # TODO: We might want to avoid following forwards if this is discovered as a MULTIRING child?
@@ -146,8 +146,8 @@ class RoutingTreeDiscoveryVisitor:
                 await self._visit(fwd, depth+1, path_extensions_local, db_connection)
             else:
                 self._pruned = True
-                self._log("Discovery aborted for forward to {}, was already present. Discovery state: {}\n"
-                          "Disabling Forward".format(fwd, path_extensions_local))
+                node.routing_log("Discovery aborted for forward to {}, was already present.\n"
+                                 "Disabling Forward".format(fwd), "WARN", related_node=node.forwarding_extension)
                 node.forwarding_mode = Extension.ForwardingMode.DISABLED
         for fork_rank in node.fork_ranks:
             for member in fork_rank.members:
@@ -159,9 +159,10 @@ class RoutingTreeDiscoveryVisitor:
                     await self._visit(ext, depth+1, path_extensions_local, db_connection)
                 else:
                     self._pruned = True
-                    self._log("Discovery aborted for {} in {}, was already present. Discovery state: {}\n"
-                              "Temporarily disable membership for this routing."
-                              .format(ext, fork_rank, path_extensions_local))
+                    fork_rank.routing_log("Discovery aborted for {} in {}, was already present.\n"
+                                          "Temporarily disable membership for this routing."
+                                          .format(ext, fork_rank, path_extensions_local), "WARN",
+                                          related_node=member.extension)
                     member.active = False
 
 
@@ -172,6 +173,18 @@ class CallTarget:
     def __init__(self, target, parameters=None):
         self.target = target
         self.parameters = parameters if parameters is not None else {}
+
+    def serialize(self):
+        return {
+            "target": self.target,
+            "parameters": self.parameters
+        }
+
+    @classmethod
+    def deserialize(cls, data):
+        target = data["target"]
+        parameters = data.get("parameters")
+        return cls(target, parameters=parameters)
 
     @property
     def is_separator(self):
@@ -196,6 +209,20 @@ class IntermediateRoutingResult:
             self.target = target
             self.fork_targets = []
 
+    def serialize(self):
+        return {
+            "target": self.target.serialize() if self.target is not None else str(None),
+            "fork_targets": [target.serialize() for target in self.fork_targets],
+        }
+
+    @classmethod
+    def deserialize(cls, data):
+        target = data.get("target")
+        if target is not None:
+            target = CallTarget.deserialize(target)
+        fork_targets = data.get("fork_targets", [])
+        return cls(target=target, fork_targets=fork_targets)
+
     def __repr__(self):
         fork_targets_str = "\n\t\t".join([repr(targ) for targ in self.fork_targets])
         return "<IntermediateRoutingResult\n\ttarget={}\n\tfork_targets=\n\t\t{}\n>".format(self.target,
@@ -213,9 +240,13 @@ class YateRoutingGenerationVisitor:
         self._yates_dict = yates_dict
         self._lateroute_cache: Dict[str, IntermediateRoutingResult] = {}
         self._x_eventphone_id = uuid.uuid4().hex
+        self._routing_results: Dict[str, IntermediateRoutingResult] = {}
 
     def get_routing_cache_content(self):
         return self._lateroute_cache
+
+    def get_routing_results(self):
+        return self._routing_results
 
     def _make_intermediate_result(self, target: CallTarget, fork_targets=None):
         return IntermediateRoutingResult(target=target, fork_targets=fork_targets)
@@ -233,7 +264,12 @@ class YateRoutingGenerationVisitor:
             self._lateroute_cache[result.target.target] = result
 
     def calculate_routing(self):
-        return self._visit_for_route_calculation(self._routing_tree.target, [])
+        return self._visit(self._routing_tree.target, [])
+
+    def _visit(self, node: Extension, path: list) -> IntermediateRoutingResult:
+        result = self._visit_for_route_calculation(node, path)
+        self._routing_results[node.tree_identifier] = result
+        return result
 
     def _visit_for_route_calculation(self, node: Extension, path: list) -> IntermediateRoutingResult:
         local_path = path.copy()
@@ -241,7 +277,7 @@ class YateRoutingGenerationVisitor:
 
         # first we check if this node has an immediate forward. If yes, we defer routing there.
         if node.immediate_forward:
-            return self._visit_for_route_calculation(node.forwarding_extension, local_path)
+            return self._visit(node.forwarding_extension, local_path)
 
         if YateRoutingGenerationVisitor.node_has_simple_routing(node):
             return self._make_intermediate_result(target=self.generate_simple_routing_target(node))
@@ -272,7 +308,7 @@ class YateRoutingGenerationVisitor:
                     # do not route inactive members
                     if not member.active:
                         continue
-                    member_route = self._visit_for_route_calculation(member.extension, local_path)
+                    member_route = self._visit(member.extension, local_path)
                     if member.type.is_special_calltype:
                         member_route.target.params["fork.calltype"] = member.type.fork_calltype
                     # please note that we ignore the member modes for the time being
@@ -292,7 +328,7 @@ class YateRoutingGenerationVisitor:
 
             if node.forwarding_mode in (Extension.ForwardingMode.ENABLED, Extension.ForwardingMode.ON_BUSY):
                 # this is non-immediate forward
-                forwarding_route = self._visit_for_route_calculation(node.forwarding_extension, local_path)
+                forwarding_route = self._visit(node.forwarding_extension, local_path)
                 if node.forwarding_mode == Extension.ForwardingMode.ENABLED:
                     fwd_delay = node.forwarding_delay - accumulated_delay
                     fork_targets.append(CallTarget("|drop={}".format(fwd_delay)))

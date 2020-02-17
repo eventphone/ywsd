@@ -43,7 +43,44 @@ class Yate:
         return yates_dict
 
 
-class Extension:
+class RoutingTreeNode:
+    class LogEntry:
+        def __init__(self, msg, level, related_node=None):
+            self.msg = msg
+            self.level = level
+            self.related_node = related_node
+
+        def serialize(self):
+            return {
+                "msg": self.msg,
+                "level": self.level,
+                "related_node": self.related_node.tree_identifier,
+            }
+
+    def __init__(self):
+        self._log = []
+        self._tree_identifier = None
+
+    @property
+    def tree_identifier(self):
+        return self._tree_identifier
+
+    @tree_identifier.setter
+    def tree_identifier(self, ti):
+        self._tree_identifier = ti
+
+    def routing_log(self, msg, level, related_node=None):
+        self._log.append(RoutingTreeNode.LogEntry(msg, level, related_node))
+
+    def serialize(self):
+        data = {key: getattr(self, key) for key in self.FIELDS_PLAIN}
+        data.update({key: str(getattr(self, key)) for key, _ in self.FIELDS_TRANSFORM})
+        data["tree_identifier"] = self.tree_identifier
+        data["logs"] = [entry.serialize() for entry in self._log]
+        return data
+
+
+class Extension(RoutingTreeNode):
     table = sa.Table("Extension", metadata,
                      sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
                      sa.Column("yate_id", sa.Integer, sa.ForeignKey("Yate.id")),
@@ -89,11 +126,20 @@ class Extension:
         ON_BUSY = 2
 
     def __init__(self, db_row, prefix=None):
+        super().__init__()
         _plain_loader(self.FIELDS_PLAIN, db_row, self, prefix=prefix)
         _transform_loader(self.FIELDS_TRANSFORM, db_row, self, prefix=prefix)
 
         self.fork_ranks = []
         self.forwarding_extension = None
+
+    def serialize(self):
+        data = super().serialize()
+        if self.forwarding_extension is not None:
+            data["forwarding_extension"] = self.forwarding_extension.serialize()
+        if self.fork_ranks:
+            data["fork_ranks"] = [rank.serialize() for rank in self.fork_ranks]
+        return data
 
     def __repr__(self):
         return "<Extension {}, name={}, type={}>".format(self.extension, self.name, self.type)
@@ -151,8 +197,10 @@ class Extension:
         res = await db_connection.execute(self.table.select().where(self.table.c.id == self.forwarding_extension_id))
         # this always exists and is unique by db constraints
         self.forwarding_extension = Extension(await res.first())
+        if self.tree_identifier is not None:
+            self.forwarding_extension.tree_identifier = self.tree_identifier + "-" + str(self.forwarding_extension.id)
 
-    async def populate_callgroup_ranks(self, db_connection):
+    async def populate_fork_ranks(self, db_connection):
         result = await db_connection.execute(
               sa.select([ForkRank.table, ForkRank.member_table, Extension.table], use_labels=True)
                 .where(ForkRank.table.c.extension_id == self.id)
@@ -167,10 +215,14 @@ class Extension:
             if current_rank_id != row.ForkRank_id:
                 current_rank_id = row.ForkRank_id
                 current_rank = ForkRank(row, prefix="ForkRank_")
+                if self.tree_identifier is not None:
+                    current_rank.tree_identifier = self.tree_identifier + "-fr" + str(current_rank.id)
                 self.fork_ranks.append(current_rank)
             member = ForkRank.Member(ForkRank.RankMemberType[row.ForkRankMember_rankmember_type],
                                      row.ForkRankMember_active,
                                      Extension(row, prefix="Extension_"))
+            if self.tree_identifier is not None:
+                member.extension.tree_identifier = current_rank.tree_identifier + "-" + str(member.extension.id)
             current_rank.members.append(member)
 
     @property
@@ -185,7 +237,7 @@ class Extension:
         return False
 
 
-class ForkRank:
+class ForkRank(RoutingTreeNode):
     table = sa.Table("ForkRank", metadata,
                      sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
                      sa.Column("extension_id", sa.Integer, sa.ForeignKey("Extension.id", ondelete="CASCADE"),
@@ -241,6 +293,7 @@ class ForkRank:
                 return res + " (inactive)>"
 
     def __init__(self, db_row, prefix=None):
+        super().__init__()
         _plain_loader(self.FIELDS_PLAIN, db_row, self, prefix=prefix)
         _transform_loader(self.FIELDS_TRANSFORM, db_row, self, prefix=prefix)
         self.members = []
@@ -248,6 +301,18 @@ class ForkRank:
     def __repr__(self):
         return "<ForkRank id={}, extension_id={}, index={}, mode={}, delay={}>"\
             .format(self.id, self.extension_id, self.mode, self.index, self.mode, self.delay)
+
+    def serialize(self):
+        data = super().serialize()
+        data["members"] = [
+            {
+                "type": str(member.type),
+                "active": member.active,
+                "extension": member.extension.serialize(),
+            }
+            for member in self.members
+        ]
+        return data
 
 
 async def initialize_database(connection):
