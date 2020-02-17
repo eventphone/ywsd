@@ -58,8 +58,11 @@ class Extension:
                      sa.Column("forwarding_mode", ENUM("DISABLED", "ENABLED", "ON_BUSY", name="forwarding_mode"),
                                nullable=False),
                      sa.Column("forwarding_delay", sa.Integer),
-                     sa.Column("forwarding_extension_id", sa.Integer, sa.ForeignKey("Extension.id")),
-                     sa.Column("lang", sa.String(8), nullable=False)
+                     sa.Column("forwarding_extension_id", sa.Integer, sa.ForeignKey("Extension.id",
+                                                                                    ondelete="SET NULL")),
+                     sa.Column("lang", sa.String(8), nullable=False),
+                     sa.CheckConstraint("(forwarding_extension_id IS NOT NULL) OR (forwarding_mode = 'DISABLED')",
+                                        name="fwd_correct"),
                      )
     FIELDS_PLAIN = ("id", "yate_id", "extension", "name", "outgoing_extension", "outgoing_name", "ringback",
                     "forwarding_delay", "forwarding_extension_id", "lang")
@@ -185,7 +188,8 @@ class Extension:
 class ForkRank:
     table = sa.Table("ForkRank", metadata,
                      sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-                     sa.Column("extension_id", sa.Integer, sa.ForeignKey("Extension.id"), nullable=False, index=True),
+                     sa.Column("extension_id", sa.Integer, sa.ForeignKey("Extension.id", ondelete="CASCADE"),
+                               nullable=False, index=True),
                      sa.Column("index", sa.Integer, nullable=False),
                      sa.Column("mode", ENUM("DEFAULT", "NEXT", "DROP", name="fork_rank_mode"), nullable=False),
                      sa.Column("delay", sa.Integer)
@@ -195,9 +199,9 @@ class ForkRank:
         ("mode", lambda x: ForkRank.Mode[x]),
     )
     member_table = sa.Table("ForkRankMember", metadata,
-                            sa.Column("forkrank_id", sa.Integer, sa.ForeignKey("ForkRank.id"),
+                            sa.Column("forkrank_id", sa.Integer, sa.ForeignKey("ForkRank.id", ondelete="CASCADE"),
                                       nullable=False, index=True),
-                            sa.Column("extension_id", sa.Integer, sa.ForeignKey("Extension.id"),
+                            sa.Column("extension_id", sa.Integer, sa.ForeignKey("Extension.id", ondelete="CASCADE"),
                                       nullable=False),
                             sa.Column("rankmember_type", ENUM("DEFAULT", "AUXILIARY", "PERSISTENT",
                                                               name="fork_rankmember_type"), nullable=False),
@@ -258,6 +262,7 @@ async def initialize_database(connection):
     await connection.execute(CreateTable(ForkRank.table))
     await connection.execute(CreateTable(ForkRank.member_table))
 
+
 async def regenerate_database_objects(connection):
     await connection.execute("DROP TABLE IF EXISTS \"Yate\" CASCADE")
     await connection.execute("DROP TABLE IF EXISTS \"Extension\" CASCADE")
@@ -276,12 +281,16 @@ async def regenerate_database_objects(connection):
 async def main():
     # init database
     import ywsd.settings
+    import sys
     from aiopg.sa import create_engine
 
     settings = ywsd.settings.Settings()
     async with create_engine(**settings.DB_CONFIG) as engine:
         async with engine.acquire() as conn:
-            await initialize_database(conn)
+            if len(sys.argv) > 1 and sys.argv[1] == "-r":
+                await regenerate_database_objects(conn)
+            else:
+                await initialize_database(conn)
 
 
 if __name__ == "__main__":
