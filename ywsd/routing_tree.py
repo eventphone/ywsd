@@ -250,6 +250,8 @@ class YateRoutingGenerationVisitor:
             # go through the callgroup ranks to issue the groups of the fork
             fork_targets = []
             accumulated_delay = 0
+            # TODO: Empty default ranks might make the callfork hang and should be removed.
+            #  Empty other ranks could be ok if I got the code right.
             for rank in node.fork_ranks:
                 if fork_targets:
                     # this is not the first rank, so we need to generate a separator
@@ -282,11 +284,21 @@ class YateRoutingGenerationVisitor:
                 fork_targets.insert(0, self.generate_simple_routing_target(node))
             # we might need to issue a delayed forward
 
-            if node.forwarding_mode == Extension.ForwardingMode.ENABLED:
-                # this is forward with a delay. We want to know how to route there...
+            if node.forwarding_mode == Extension.ForwardingMode.ON_BUSY:
+                # There should be no call waiting on all previous call legs.
+                for target in fork_targets:
+                    if not target.is_separator:
+                        target.parameters["osip_X-No-Call-Wait"] = "1"
+
+            if node.forwarding_mode in (Extension.ForwardingMode.ENABLED, Extension.ForwardingMode.ON_BUSY):
+                # this is non-immediate forward
                 forwarding_route = self._visit_for_route_calculation(node.forwarding_extension, local_path)
-                fwd_delay = node.forwarding_delay - accumulated_delay
-                fork_targets.append(CallTarget("|drop={}".format(fwd_delay)))
+                if node.forwarding_mode == Extension.ForwardingMode.ENABLED:
+                    fwd_delay = node.forwarding_delay - accumulated_delay
+                    fork_targets.append(CallTarget("|drop={}".format(fwd_delay)))
+                else:
+                    # Add a default rank, call will progress to next rang when all previous calls failed
+                    fork_targets.append(CallTarget("|"))
                 fork_targets.append(forwarding_route.target)
                 self._cache_intermediate_result(forwarding_route)
             # TODO: Forwarding mode ON_BUSY needs to be implemented
