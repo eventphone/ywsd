@@ -64,8 +64,8 @@ class RoutingTree:
         # push parameters here like faked-caller-id or caller-language
         eventphone_parameters = {}
         if self.source.outgoing_extension is not None and self.source.outgoing_extension != "":
-            eventphone_parameters["osip_X-Masking-Extension"] = self.source.outgoing_extension
-            eventphone_parameters["osip_X-Masking-Name"] = self.source.outgoing_name
+            eventphone_parameters["caller"] = self.source.outgoing_extension
+            eventphone_parameters["callername"] = self.source.outgoing_name
         eventphone_parameters["osip_X-Caller-Language"] = self.source.lang
         return eventphone_parameters
 
