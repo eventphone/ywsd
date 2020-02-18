@@ -23,6 +23,54 @@ class DoesNotExist(Exception):
     pass
 
 
+class User:
+    table = sa.Table("users", metadata,
+                     sa.Column("username", sa.String(128), unique=True, nullable=False, primary_key=True),
+                     sa.Column("displayname", sa.String(128), server_default="EventphoneUser", nullable=False),
+                     sa.Column("guru3_ref", sa.String(128)),
+                     sa.Column("password", sa.String(128), nullable=False),
+                     sa.Column("inuse", sa.Integer, nullable=False, server_default="0"),
+                     sa.Column("location", sa.String(1024)),
+                     sa.Column("expires", sa.TIMESTAMP),
+                     sa.Column("type", sa.String(20), default="user"),
+                     sa.Column("dect_displaymode", ENUM("NUMBER", "NUMBER_AND_NAME", "NAME", name="dect_displaymode")),
+                     sa.Column("oconnection_id", sa.String(1024))
+                     )
+
+    FIELDS_PLAIN = ("username", "displayname", "guru3_ref", "password", "inuse", "location", "expires", "type",
+                    "oconnection_id")
+    FIELDS_TRANSFORM = (
+        ("dect_displaymode", lambda x: User.DectDisplaymode[x] if x is not None else None),
+    )
+
+    class DectDisplaymode(Enum):
+        NUMBER = 0
+        NUMBER_AND_NAME = 1
+        NAME = 3
+
+    def __init__(self, db_row, prefix=None):
+        _plain_loader(self.FIELDS_PLAIN, db_row, self, prefix=prefix)
+        _transform_loader(self.FIELDS_TRANSFORM, db_row, self, prefix=prefix)
+
+    async def load_user(cls, username, db_connection):
+        res = await db_connection.execute(cls.table.select().where(cls.table.c.username == username))
+        if res.rowcount == 0:
+            raise DoesNotExist("No user \"{}\" found".format(username))
+        return cls(await res.first())
+
+
+class ActiveCall:
+    table = sa.Table("active_calls", metadata,
+                     sa.Column("username", sa.String(128), sa.ForeignKey("users.username"), nullable=False),
+                     sa.Column("x_eventphone_id", sa.String(64), nullable=False),
+                     )
+
+    @classmethod
+    async def is_active_call(cls, username, x_eventphone_id, db_connection):
+        return (await db_connection.scalar(cls.table.count()
+                                                    .where(cls.table.c.username == username)
+                                                    .where(cls.table.c.x_eventphone_id == x_eventphone_id))) > 0
+
 class Yate:
     table = sa.Table("Yate", metadata,
                      sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
@@ -90,7 +138,6 @@ class Extension(RoutingTreeNode):
                                nullable=False),
                      sa.Column("outgoing_extension", sa.String(256)),
                      sa.Column("outgoing_name", sa.String(256)),
-                     sa.Column("dect_displaymode", ENUM("NUMBER", "NUMBER_AND_NAME", "NAME", name="dect_displaymode")),
                      sa.Column("ringback", sa.String(128)),
                      sa.Column("forwarding_mode", ENUM("DISABLED", "ENABLED", "ON_BUSY", name="forwarding_mode"),
                                nullable=False),
@@ -105,7 +152,6 @@ class Extension(RoutingTreeNode):
                     "forwarding_delay", "forwarding_extension_id", "lang")
     FIELDS_TRANSFORM = (
         ("type", lambda x: Extension.Type[x]),
-        ("dect_displaymode", lambda x: Extension.DectDisplaymode[x] if x is not None else None),
         ("forwarding_mode", lambda x: Extension.ForwardingMode[x]),
     )
 
@@ -114,11 +160,6 @@ class Extension(RoutingTreeNode):
         MULTIRING = 1
         GROUP = 2
         EXTERNAL = 3
-
-    class DectDisplaymode(Enum):
-        NUMBER = 0
-        NUMBER_AND_NAME = 1
-        NAME = 3
 
     class ForwardingMode(Enum):
         DISABLED = 0
@@ -327,12 +368,18 @@ async def initialize_database(connection):
     await connection.execute(CreateTable(ForkRank.table))
     await connection.execute(CreateTable(ForkRank.member_table))
 
+    await connection.execute(CreateTable(User.table))
+    await connection.execute(CreateTable(ActiveCall.table))
+
 
 async def regenerate_database_objects(connection):
     await connection.execute("DROP TABLE IF EXISTS \"Yate\" CASCADE")
     await connection.execute("DROP TABLE IF EXISTS \"Extension\" CASCADE")
     await connection.execute("DROP TABLE IF EXISTS \"ForkRank\" CASCADE")
     await connection.execute("DROP TABLE IF EXISTS \"ForkRankMember\" CASCADE")
+
+    await connection.execute("DROP TABLE IF EXISTS users CASCADE")
+    await connection.execute("DROP TABLE IF EXISTS active_calls CASCADE")
 
     await connection.execute("DROP TYPE IF EXISTS extension_type")
     await connection.execute("DROP TYPE IF EXISTS dect_displaymode")

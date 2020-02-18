@@ -1,6 +1,5 @@
 from enum import Enum
 from typing import List, Dict, Tuple
-import json
 import os.path
 import uuid
 
