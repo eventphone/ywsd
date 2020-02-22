@@ -82,10 +82,12 @@ class YateRoutingEngine(YateAsync):
     def _call_route_handler(self, msg: Message) -> Optional[bool]:
         logging.debug("Asked to route message: {}".format(msg.params))
         called = msg.params.get("called")
+        stage2_active = msg.params.get("eventphone_stage2", "0")
+
         if called is None or called == "":
             return False
         if called.isdigit():
-            if msg.params.get("connection_id", "") == self.settings.INTERNAL_YATE_LISTENER:
+            if msg.params.get("connection_id", "") == self.settings.INTERNAL_YATE_LISTENER or stage2_active == "1":
                 task = stage2.RoutingTask(self, msg)
             else:
                 task = stage1.RoutingTask(self, msg)

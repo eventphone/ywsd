@@ -378,7 +378,7 @@ class YateRoutingGenerationVisitor:
 
     def generate_simple_routing_target(self, node: Extension):
         if node.yate_id == self._local_yate_id:
-            return self._make_calltarget("lateroute/stage2-{}".format(node.extension))
+            return self._make_calltarget("lateroute/{}".format(node.extension), {"eventphone_stage2": "1"})
         else:
             return self._make_calltarget("sip/sip:{}@{}"
                                          .format(node.extension, self._yates_dict[node.yate_id].hostname),
