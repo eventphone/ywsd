@@ -9,22 +9,24 @@ from yate.asyncio import YateAsync
 from yate.protocol import Message
 
 import ywsd.yate
-from ywsd.objects import Yate, Extension
+from ywsd.objects import Yate
+from ywsd import stage1, stage2
 from ywsd.util import class_from_dotted_string
-from ywsd.routing_cache import PythonDictRoutingCache, RoutingCacheBase
-from ywsd.routing_tree import RoutingTree, IntermediateRoutingResult, RoutingError
+from ywsd.routing_cache import RoutingCacheBase
+from ywsd.routing_tree import IntermediateRoutingResult
 from ywsd.settings import Settings
 
 
 logging.basicConfig(level=logging.DEBUG)
 
 
-class YateStage1RoutingEngine(YateAsync):
+class YateRoutingEngine(YateAsync):
     def __init__(self, *args, **kwargs):
         self._settings = kwargs.pop("settings")
         super().__init__(*args, **kwargs)
         self._shutdown_future = None
-        self._db_engine = None
+        self._routing_db_engine = None
+        self._stage2_db_engine = None
         self._routing_cache: Optional[RoutingCacheBase] = None
         self._yates_dict: Dict[int, Yate] = {}
 
@@ -37,8 +39,12 @@ class YateStage1RoutingEngine(YateAsync):
         return self._yates_dict
 
     @property
-    def db_engine(self):
-        return self._db_engine
+    def routing_db_engine(self):
+        return self._routing_db_engine
+
+    @property
+    def stage2_db_engine(self):
+        return self._stage2_db_engine
 
     def run(self):
         logging.info("Initialiting YateAsync engine")
@@ -53,20 +59,25 @@ class YateStage1RoutingEngine(YateAsync):
 
         logging.info("Initializing database engine")
         async with aiopg.sa.create_engine(**self._settings.DB_CONFIG) as db_engine:
-            self._db_engine = db_engine
+            self._routing_db_engine = db_engine
             logging.info("Loading remote yates information from DB")
-            async with self.db_engine.acquire() as db_connection:
+            async with self.routing_db_engine.acquire() as db_connection:
                 self._yates_dict = await Yate.load_yates_dict(db_connection)
 
-            logging.info("Registering for routing messages")
-            if not await self.register_message_handler_async("call.route", self._call_route_handler, 50):
-                logging.error("Cannot register for call.route. Terminating...")
-                return
+            logging.info("Initializing stage2 database engine")
+            async with aiopg.sa.create_engine(**self._settings.STAGE2_DB_CONFIG) as stage2_db_engine:
+                self._stage2_db_engine = stage2_db_engine
 
-            logging.info("Ready to route")
-            await self._shutdown_future
+                logging.info("Registering for routing messages")
+                if not await self.register_message_handler_async("call.route", self._call_route_handler, 50):
+                    logging.error("Cannot register for call.route. Terminating...")
+                    return
 
-        self._db_engine = None
+                logging.info("Ready to route")
+                await self._shutdown_future
+
+        self._routing_db_engine = None
+        self._stage2_db_engine = None
 
     def _call_route_handler(self, msg: Message) -> Optional[bool]:
         logging.debug("Asked to route message: {}".format(msg.params))
@@ -74,10 +85,16 @@ class YateStage1RoutingEngine(YateAsync):
         if called is None or called == "":
             return False
         if called.isdigit():
-            task = RoutingTask(self, msg)
+            if msg.params.get("connection_id", "") == self.settings.INTERNAL_YATE_LISTENER:
+                task = stage2.RoutingTask(self, msg)
+            else:
+                task = stage1.RoutingTask(self, msg)
             self.event_loop.create_task(task.routing_job())
         elif called.startswith("stage1-"):
             self.event_loop.create_task(self._retrieve_from_cache_for(msg))
+        elif called.startswith("stage2-"):
+            task = stage2.RoutingTask(self, msg)
+            self.event_loop.create_task(task.routing_job())
         else:
             return False
 
@@ -96,37 +113,6 @@ class YateStage1RoutingEngine(YateAsync):
         await self._routing_cache.update(entries)
 
 
-class RoutingTask:
-    def __init__(self, yate: YateStage1RoutingEngine, message: Message):
-        self._yate = yate
-        self._message = message
-
-    async def routing_job(self):
-        caller = self._message.params.get("caller")
-        called = self._message.params.get("called")
-        if caller is None:
-            # we do not process messages without a caller
-            self._yate.answer_message(self._message, False)
-        # TODO: Do we need to clean caller somehow before processing?
-        if self._message.params.get("connection_id", "") != self._yate.settings.INTERNAL_YATE_LISTENER:
-            caller = Extension.create_external(caller)
-
-        logging.debug("Routing {} to {}".format(caller, called))
-        try:
-            routing_tree = RoutingTree(caller, called, self._yate.settings)
-            async with self._yate.db_engine.acquire() as db_connection:
-                await routing_tree.discover_tree(db_connection)
-            routing_result, routing_cache_entries = routing_tree.calculate_routing(self._yate.settings.LOCAL_YATE_ID,
-                                                                                   self._yate.yates_dict)
-            logging.debug("Routing result:\n{}\n{}".format(routing_result, routing_cache_entries))
-        except RoutingError as e:
-            self._message.params["error"] = e.error_code
-            logging.info("Routing {} to {} failed: {}".format(caller, called, e.message))
-        await self._yate.store_cache_infos(routing_cache_entries)
-        result_message = ywsd.yate.encode_routing_result(self._message, routing_result)
-        self._yate.answer_message(result_message, True)
-
-
 def main():
     parser = argparse.ArgumentParser(description='Yate Stage1 Routing Engine')
     parser.add_argument("--config", type=str, help="Config file to use.", default="routing_engine.yaml")
@@ -142,7 +128,7 @@ def main():
 
     settings = Settings(args.config)
     yate_connection = settings.YATE_CONNECTION
-    app = YateStage1RoutingEngine(settings=settings, **yate_connection)
+    app = YateRoutingEngine(settings=settings, **yate_connection)
     app.run()
 
 

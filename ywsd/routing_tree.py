@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 from typing import List, Dict, Tuple
 import os.path
@@ -26,7 +27,7 @@ class RoutingTree:
 
     async def discover_tree(self, db_connection):
         await self._load_source_and_target(db_connection)
-        visitor = RoutingTreeDiscoveryVisitor(self.target, [self.source_extension])
+        visitor = RoutingTreeDiscoveryVisitor(self.target, [self.source.extension])
         await visitor.discover_tree(db_connection)
         return visitor
 
@@ -71,7 +72,11 @@ class RoutingTree:
         if self.source.outgoing_extension is not None and self.source.outgoing_extension != "":
             eventphone_parameters["caller"] = self.source.outgoing_extension
             eventphone_parameters["callername"] = self.source.outgoing_name
-        eventphone_parameters["osip_X-Caller-Language"] = self.source.lang
+        else:
+            # avoid name spoofing
+            eventphone_parameters["callername"] = self.source.name
+        if self.source.lang is not None:
+            eventphone_parameters["osip_X-Caller-Language"] = self.source.lang
         return eventphone_parameters
 
     def _populate_eventphone_parameters(self):
@@ -92,7 +97,9 @@ class RoutingTree:
 
     async def _load_source_and_target(self, db_connection):
         try:
-            if not isinstance(self.source, Extension):
+            if isinstance(self.source_extension, Extension):
+                self.source = self.source_extension
+            else:
                 self.source = await Extension.load_extension(self.source_extension, db_connection)
         except DoesNotExist:
             self.source = Extension.create_unknown(self.source_extension)

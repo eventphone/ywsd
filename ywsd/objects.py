@@ -52,6 +52,7 @@ class User:
         _plain_loader(self.FIELDS_PLAIN, db_row, self, prefix=prefix)
         _transform_loader(self.FIELDS_TRANSFORM, db_row, self, prefix=prefix)
 
+    @classmethod
     async def load_user(cls, username, db_connection):
         res = await db_connection.execute(cls.table.select().where(cls.table.c.username == username))
         if res.rowcount == 0:
