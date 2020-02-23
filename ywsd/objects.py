@@ -391,13 +391,25 @@ async def regenerate_database_objects(connection):
     await initialize_database(connection)
 
 
-async def main():
+def main():
+    asyncio.run(amain())
+
+
+async def amain():
     # init database
-    import ywsd.settings
+    import argparse
     import sys
+
     from aiopg.sa import create_engine
 
-    settings = ywsd.settings.Settings()
+    import ywsd.settings
+
+    parser = argparse.ArgumentParser(description='Yate Routing Engine')
+    parser.add_argument("--config", type=str, help="Config file to use.", default="routing_engine.yaml")
+
+    args = parser.parse_args()
+    settings = ywsd.settings.Settings(args.config)
+
     async with create_engine(**settings.DB_CONFIG) as engine:
         async with engine.acquire() as conn:
             if len(sys.argv) > 1 and sys.argv[1] == "-r":
@@ -407,4 +419,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

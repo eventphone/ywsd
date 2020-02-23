@@ -1,6 +1,9 @@
-RINGBACK_TOP_DIRECTORY: "/tmp/ringback/"
+RINGBACK_TOP_DIRECTORY: "/opt/sounds"
 
 DB_CONFIG:
+  database: "ywsd"
+
+STAGE2_DB_CONFIG:
   database: "ywsd"
 
 LOCAL_YATE_ID: 2
@@ -9,5 +12,9 @@ INTERNAL_YATE_LISTENER: voip
 
 CACHE_IMPLEMENTATION: "ywsd.routing_cache.PythonDictRoutingCache"
 
+LOG_FILE:
+LOG_VERBOSE:
+
 YATE_CONNECTION:
-  sockpath: /tmp/yate.sock
+  host: localhost
+  port: 5039

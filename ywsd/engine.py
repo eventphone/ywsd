@@ -17,9 +17,6 @@ from ywsd.routing_tree import IntermediateRoutingResult
 from ywsd.settings import Settings
 
 
-logging.basicConfig(level=logging.DEBUG)
-
-
 class YateRoutingEngine(YateAsync):
     def __init__(self, *args, **kwargs):
         self._settings = kwargs.pop("settings")
@@ -69,7 +66,7 @@ class YateRoutingEngine(YateAsync):
                 self._stage2_db_engine = stage2_db_engine
 
                 logging.info("Registering for routing messages")
-                if not await self.register_message_handler_async("call.route", self._call_route_handler, 50):
+                if not await self.register_message_handler_async("call.route", self._call_route_handler, 90):
                     logging.error("Cannot register for call.route. Terminating...")
                     return
 
@@ -116,19 +113,28 @@ class YateRoutingEngine(YateAsync):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Yate Stage1 Routing Engine')
+    parser = argparse.ArgumentParser(description='Yate Routing Engine')
     parser.add_argument("--config", type=str, help="Config file to use.", default="routing_engine.yaml")
     parser.add_argument("--verbose", help="Print out debug logs.", action="store_true")
 
     args = parser.parse_args()
-    if args.verbose:
-        logging.basicConfig(level=logging.INFO)
+    settings = Settings(args.config)
+
+    logging_basic_config_params = {
+        "format": "%(asctime)s:%(name)-10s:%(levelname)-8s:%(message)s",
+        "datefmt": "%H:%M:%S",
+    }
+    if settings.LOG_FILE is not None:
+        logging_basic_config_params["filename"] = settings.LOG_FILE
+        logging_basic_config_params["filemode"] = "a+"
+
+    if args.verbose or settings.LOG_VERBOSE:
+        logging.basicConfig(level=logging.DEBUG, **logging_basic_config_params)
     else:
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(level=logging.INFO, **logging_basic_config_params)
 
     logging.debug("Debug logging enabled.")
 
-    settings = Settings(args.config)
     yate_connection = settings.YATE_CONNECTION
     app = YateRoutingEngine(settings=settings, **yate_connection)
     app.run()
