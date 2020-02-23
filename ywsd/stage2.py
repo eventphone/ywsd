@@ -41,7 +41,7 @@ class RoutingTask:
                 return False
 
             headers = get_headers(self._message)
-            if headers["X-No-Call-Wait"] == "1" and target.inuse > 0:
+            if (headers["X-No-Call-Wait"] == "1" or not target.call_waiting) and target.inuse > 0:
                 self._message.params["error"] = "busy"
                 return False
             if await ActiveCall.is_active_call("called", headers["X-Eventphone-Id"], db_connection):
