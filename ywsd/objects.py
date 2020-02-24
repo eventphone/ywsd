@@ -203,7 +203,6 @@ class Extension(RoutingTreeNode):
             "forwarding_extension_id": None,
             "lang": None,
             "type": "EXTERNAL",
-            "dect_displaymode": None,
             "forwarding_mode": "DISABLED",
         }
         return cls(namedtuple('Ext_row', params.keys())(*params.values()))
@@ -222,7 +221,6 @@ class Extension(RoutingTreeNode):
             "forwarding_extension_id": None,
             "lang": None,
             "type": "SIMPLE",
-            "dect_displaymode": None,
             "forwarding_mode": "DISABLED",
         }
         return cls(namedtuple('Ext_row', params.keys())(*params.values()))
@@ -358,13 +356,15 @@ class ForkRank(RoutingTreeNode):
         return data
 
 
-async def initialize_database(connection, stage2_only=False):
+async def initialize_database(connection, stage2_only=False, stage1_only=False):
     if not stage2_only:
         await connection.execute("CREATE TYPE extension_type AS ENUM('SIMPLE', 'MULTIRING', 'GROUP', 'EXTERNAL')")
         await connection.execute("CREATE TYPE forwarding_mode AS ENUM('DISABLED', 'ENABLED', 'ON_BUSY')")
         await connection.execute("CREATE TYPE fork_rank_mode AS ENUM('DEFAULT', 'NEXT', 'DROP')")
         await connection.execute("CREATE TYPE fork_rankmember_type AS ENUM('DEFAULT', 'AUXILIARY', 'PERSISTENT')")
-    await connection.execute("CREATE TYPE dect_displaymode AS ENUM('NUMBER', 'NUMBER_AND_NAME', 'NAME')")
+
+    if not stage1_only:
+        await connection.execute("CREATE TYPE dect_displaymode AS ENUM('NUMBER', 'NUMBER_AND_NAME', 'NAME')")
 
     if not stage2_only:
         await connection.execute(CreateTable(Yate.table))
@@ -372,11 +372,12 @@ async def initialize_database(connection, stage2_only=False):
         await connection.execute(CreateTable(ForkRank.table))
         await connection.execute(CreateTable(ForkRank.member_table))
 
-    await connection.execute(CreateTable(User.table))
-    await connection.execute(CreateTable(ActiveCall.table))
+    if not stage1_only:
+        await connection.execute(CreateTable(User.table))
+        await connection.execute(CreateTable(ActiveCall.table))
 
 
-async def regenerate_database_objects(connection, stage2_only=False):
+async def regenerate_database_objects(connection, stage2_only=False, stage1_only=False):
     await connection.execute("DROP TABLE IF EXISTS \"Yate\" CASCADE")
     await connection.execute("DROP TABLE IF EXISTS \"Extension\" CASCADE")
     await connection.execute("DROP TABLE IF EXISTS \"ForkRank\" CASCADE")
@@ -391,7 +392,7 @@ async def regenerate_database_objects(connection, stage2_only=False):
     await connection.execute("DROP TYPE IF EXISTS fork_rank_mode")
     await connection.execute("DROP TYPE IF EXISTS fork_rankmember_type")
 
-    await initialize_database(connection, stage2_only)
+    await initialize_database(connection, stage2_only, stage1_only)
 
 
 def main():
@@ -410,6 +411,7 @@ async def amain():
     parser = argparse.ArgumentParser(description='Yate Routing Engine')
     parser.add_argument("--config", type=str, help="Config file to use.", default="routing_engine.yaml")
     parser.add_argument("--stage2", help="Only setup tables for stage2 routing", action="store_true")
+    parser.add_argument("--stage1", help="Only setup tables for stage1 routing", action="store_true")
     parser.add_argument("--regenerate", help="Drop tables if they already exist", action="store_true")
 
     args = parser.parse_args()
@@ -418,9 +420,9 @@ async def amain():
     async with create_engine(**settings.DB_CONFIG) as engine:
         async with engine.acquire() as conn:
             if args.regenerate:
-                await regenerate_database_objects(conn, args.stage2)
+                await regenerate_database_objects(conn, args.stage2, args.stage1)
             else:
-                await initialize_database(conn, args.stage2)
+                await initialize_database(conn, args.stage2, args.stage1)
 
 
 if __name__ == "__main__":
