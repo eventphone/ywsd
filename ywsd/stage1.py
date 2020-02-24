@@ -5,6 +5,7 @@ from yate.protocol import Message
 import ywsd.yate
 from ywsd.objects import Extension, DoesNotExist
 from ywsd.routing_tree import RoutingTree, RoutingError
+from ywsd.util import retry_db_offline
 
 
 class RoutingTask:
@@ -50,6 +51,7 @@ class RoutingTask:
             logging.info("Routing {} to {} failed: {}".format(caller, called, e.message))
             return self._message
 
+    @retry_db_offline(count=4, wait_ms=1000)
     async def routing_job(self):
         caller = self._message.params.get("caller")
         called = self._message.params.get("called")

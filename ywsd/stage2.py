@@ -3,6 +3,8 @@ import logging
 from yate.protocol import Message
 
 from ywsd.objects import User, ActiveCall, DoesNotExist
+from ywsd.util import retry_db_offline
+
 
 HEADER_NAMES = (
     "X-Eventphone-Id",
@@ -34,10 +36,12 @@ class RoutingTask:
                 target = await User.load_user(called, db_connection)
             except DoesNotExist:
                 self._message.params["error"] = "noroute"
+                self._message.params["reason"] = "noroute"
                 return False
 
             if target.location is None or target.location == "":
                 self._message.params["error"] = "offline"
+                self._message.params["reason"] = "offline"
                 return False
 
             headers = get_headers(self._message)
@@ -52,6 +56,7 @@ class RoutingTask:
                 self._message.params["oconnection_id"] = target.oconnection_id
                 return True
 
+    @retry_db_offline(count=4, wait_ms=1000)
     async def routing_job(self):
         caller = self._message.params.get("caller")
         called = self._message.params.get("called")
