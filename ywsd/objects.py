@@ -27,7 +27,6 @@ class User:
     table = sa.Table("users", metadata,
                      sa.Column("username", sa.String(128), unique=True, nullable=False, primary_key=True),
                      sa.Column("displayname", sa.String(128), server_default="EventphoneUser", nullable=False),
-                     sa.Column("guru3_ref", sa.String(128)),
                      sa.Column("password", sa.String(128), nullable=False),
                      sa.Column("inuse", sa.Integer, nullable=False, server_default="0"),
                      sa.Column("location", sa.String(1024)),
@@ -38,7 +37,7 @@ class User:
                      sa.Column("oconnection_id", sa.String(1024))
                      )
 
-    FIELDS_PLAIN = ("username", "displayname", "guru3_ref", "password", "inuse", "location", "expires", "type",
+    FIELDS_PLAIN = ("username", "displayname", "password", "inuse", "location", "expires", "type",
                     "call_waiting", "oconnection_id")
     FIELDS_TRANSFORM = (
         ("dect_displaymode", lambda x: User.DectDisplaymode[x] if x is not None else None),
