@@ -40,7 +40,7 @@ class RoutingTree:
         return self.routing_result, self.new_routing_cache_content
 
     def serialized_tree(self):
-        return self.target.serialize()
+        return self.target.serialize() if self.target else None
 
     def _calculate_main_routing(self, local_yate, yates_dict):
         visitor = YateRoutingGenerationVisitor(self, local_yate, yates_dict)

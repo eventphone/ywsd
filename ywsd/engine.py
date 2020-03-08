@@ -5,6 +5,8 @@ import logging
 from typing import Optional, Dict
 
 import aiopg.sa
+from aiohttp import web
+
 from yate.asyncio import YateAsync
 from yate.protocol import Message
 
@@ -13,7 +15,7 @@ from ywsd.objects import Yate
 from ywsd import stage1, stage2
 from ywsd.util import class_from_dotted_string
 from ywsd.routing_cache import RoutingCacheBase
-from ywsd.routing_tree import IntermediateRoutingResult
+from ywsd.routing_tree import IntermediateRoutingResult, RoutingTree, RoutingError
 from ywsd.settings import Settings
 
 
@@ -26,6 +28,15 @@ class YateRoutingEngine(YateAsync):
         self._stage2_db_engine = None
         self._routing_cache: Optional[RoutingCacheBase] = None
         self._yates_dict: Dict[int, Yate] = {}
+
+        if self._settings.WEB_INTERFACE is not None:
+            self._web_app = web.Application()
+            self._web_app.add_routes([
+                web.get("/stage1", self._web_stage1_handler)
+            ])
+            self._app_runner = web.AppRunner(self._web_app)
+        else:
+            self._web_app = None
 
     @property
     def settings(self):
@@ -64,6 +75,15 @@ class YateRoutingEngine(YateAsync):
             logging.info("Initializing stage2 database engine")
             async with aiopg.sa.create_engine(**self._settings.STAGE2_DB_CONFIG) as stage2_db_engine:
                 self._stage2_db_engine = stage2_db_engine
+                
+                # fire up http server if requested
+                if self._web_app is not None:
+                    bind = self._settings.WEB_INTERFACE.get("bind_address")
+                    port = int(self._settings.WEB_INTERFACE.get("port", 9000))
+                    await self._app_runner.setup()
+                    site = web.TCPSite(self._app_runner, bind, port)
+                    await site.start()
+                    logging.info("Webserver ready. Waiting for requests on {}:{}.".format(bind, port))
 
                 logging.info("Registering for routing messages")
                 if not await self.register_message_handler_async("call.route", self._call_route_handler, 90):
@@ -110,6 +130,42 @@ class YateRoutingEngine(YateAsync):
 
     async def store_cache_infos(self, entries: Dict[str, IntermediateRoutingResult]):
         await self._routing_cache.update(entries)
+
+    async def _web_stage1_handler(self, request):
+        params = request.query
+
+        called = params.get("called")
+        caller = params.get("caller")
+
+        if any((caller is None, called is None)):
+            return web.Response(status=400, text="Provide at least <caller> and <called>")
+
+        # calculate routing tree and results
+        routing_tree = None
+        routing_result = None
+        routing_cache_entries = {}
+        routing_status = "PROCESSING"
+        routing_status_details = ""
+        try:
+            async with self.routing_db_engine.acquire() as db_connection:
+                routing_tree = RoutingTree(caller, called, self.settings)
+                await routing_tree.discover_tree(db_connection)
+
+            routing_result, routing_cache_entries = routing_tree.calculate_routing(self.settings.LOCAL_YATE_ID,
+                                                                                   self.yates_dict)
+            routing_status = "OK"
+        except RoutingError as e:
+            routing_status = "ERROR"
+            routing_status_details = "{}: {}".format(e.error_code, e.message)
+
+        json_response_data = {
+            "routing_tree": routing_tree.serialized_tree(),
+            "routing_result": routing_result.serialize() if routing_result is not None else None,
+            "routing_cache_entries": {key: result.serialize() for key, result in routing_cache_entries.items()},
+            "routing_status": routing_status,
+            "routing_status_details": routing_status_details,
+        }
+        return web.json_response(json_response_data)
 
 
 def main():
