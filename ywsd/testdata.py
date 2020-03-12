@@ -53,11 +53,12 @@ def test_route_display(src, target, local_yate):
 
 yates_dict = {1: "dect", 2: "sip", 3: "app"}
 
+
 async def write_testdata(conn):
     await conn.execute(Yate.table.insert().values([
-        {"hostname": "dect", "voip_listener": "local"},
-        {"hostname": "sip", "voip_listener": "local"},
-        {"hostname": "app", "voip_listener": "local"},
+        {"hostname": "dect", "voip_listener": "local", "guru3_identifier": "DECT"},
+        {"hostname": "sip", "voip_listener": "local", "guru3_identifier": "SIP"},
+        {"hostname": "app", "voip_listener": "local", "guru3_identifier": "APP"},
     ]))
 
     yates = {}

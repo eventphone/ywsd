@@ -76,9 +76,10 @@ class Yate:
     table = sa.Table("Yate", metadata,
                      sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
                      sa.Column("hostname", sa.String(256), nullable=False),
+                     sa.Column("guru3_identifier", sa.String(32), nullable=False),
                      sa.Column("voip_listener", sa.String(256), nullable=False)
                      )
-    FIELDS_PLAIN = ("id", "hostname", "voip_listener")
+    FIELDS_PLAIN = ("id", "hostname", "guru3_identifier", "voip_listener")
 
     def __init__(self, db_row):
         _plain_loader(self.FIELDS_PLAIN, db_row, self)
