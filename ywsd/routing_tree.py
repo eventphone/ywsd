@@ -216,10 +216,12 @@ class IntermediateRoutingResult:
             self.fork_targets = []
 
     def serialize(self):
-        return {
+        result = {
             "target": self.target.serialize() if self.target is not None else str(None),
-            "fork_targets": [target.serialize() for target in self.fork_targets],
         }
+        if self.fork_targets:
+            result["fork_targets"] = [target.serialize() for target in self.fork_targets],
+        return result
 
     @classmethod
     def deserialize(cls, data):

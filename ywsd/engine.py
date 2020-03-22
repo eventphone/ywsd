@@ -143,6 +143,7 @@ class YateRoutingEngine(YateAsync):
         # calculate routing tree and results
         routing_tree = None
         routing_result = None
+        all_routing_results = None
         routing_cache_entries = {}
         routing_status = "PROCESSING"
         routing_status_details = ""
@@ -153,6 +154,7 @@ class YateRoutingEngine(YateAsync):
 
             routing_result, routing_cache_entries = routing_tree.calculate_routing(self.settings.LOCAL_YATE_ID,
                                                                                    self.yates_dict)
+            all_routing_results = routing_tree.all_routing_results
             routing_status = "OK"
         except RoutingError as e:
             routing_status = "ERROR"
@@ -160,8 +162,9 @@ class YateRoutingEngine(YateAsync):
 
         json_response_data = {
             "routing_tree": routing_tree.serialized_tree(),
-            "routing_result": routing_result.serialize() if routing_result is not None else None,
-            "routing_cache_entries": {key: result.serialize() for key, result in routing_cache_entries.items()},
+            "main_routing_result": routing_result.serialize() if routing_result is not None else None,
+            "all_routing_results": {key: result.serialize() for key, result in all_routing_results.items() if
+                                    result.target.target in routing_cache_entries},
             "routing_status": routing_status,
             "routing_status_details": routing_status_details,
         }
