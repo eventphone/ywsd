@@ -158,6 +158,7 @@ class YateRoutingEngine(YateAsync):
             routing_status = "OK"
         except RoutingError as e:
             routing_status = "ERROR"
+            all_routing_results = {}
             routing_status_details = "{}: {}".format(e.error_code, e.message)
 
         json_response_data = {
