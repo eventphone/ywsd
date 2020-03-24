@@ -345,8 +345,6 @@ class YateRoutingGenerationVisitor:
                     fork_targets.append(CallTarget("|"))
                 fork_targets.append(forwarding_route.target)
                 self._cache_intermediate_result(forwarding_route)
-            # TODO: Forwarding mode ON_BUSY needs to be implemented
-            #  Signal to the original destination that there should be no call waiting for this call
 
             return self._make_intermediate_result(
                 fork_targets=fork_targets, target=self._make_calltarget(self.generate_deferred_routestring(local_path)))
@@ -379,6 +377,8 @@ class YateRoutingGenerationVisitor:
         return False
 
     def generate_simple_routing_target(self, node: Extension):
+        if node.yate_id is None:
+            raise RoutingError("failure", "Extension {} is misconfigured - yate_id is NULL.".format(node))
         if node.yate_id == self._local_yate_id:
             return self._make_calltarget("lateroute/{}".format(node.extension), {"eventphone_stage2": "1"})
         else:
