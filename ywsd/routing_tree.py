@@ -220,7 +220,7 @@ class IntermediateRoutingResult:
             "target": self.target.serialize() if self.target is not None else str(None),
         }
         if self.fork_targets:
-            result["fork_targets"] = [target.serialize() for target in self.fork_targets],
+            result["fork_targets"] = [target.serialize() for target in self.fork_targets]
         return result
 
     @classmethod
