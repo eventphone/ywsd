@@ -1,8 +1,9 @@
+from typing import Optional, Dict
 import argparse
 import asyncio
-import signal
 import logging
-from typing import Optional, Dict
+import signal
+import traceback
 
 import aiopg.sa
 from aiohttp import web
@@ -160,6 +161,11 @@ class YateRoutingEngine(YateAsync):
             routing_status = "ERROR"
             all_routing_results = {}
             routing_status_details = "{}: {}".format(e.error_code, e.message)
+        except Exception as e:
+            backtrace = traceback.format_exc()
+            routing_status = "ERROR"
+            all_routing_results = {}
+            routing_status_details = "Unexpected Exception while routing:\n{}:Backtrace:\n{}".format(e, backtrace)
 
         json_response_data = {
             "routing_tree": routing_tree.serialized_tree(),

@@ -204,19 +204,25 @@ class IntermediateRoutingResult:
     class Type(Enum):
         SIMPLE = 0
         FORK = 1
+        NO_ROUTE = 99
 
     def __init__(self, target: CallTarget = None, fork_targets: List['CallTarget'] = None):
         if fork_targets is not None:
             self.type = IntermediateRoutingResult.Type.FORK
             self.fork_targets = fork_targets
             self.target = target
-        else:
+        elif target is not None:
             self.type = IntermediateRoutingResult.Type.SIMPLE
             self.target = target
+            self.fork_targets = []
+        else:
+            self.type = IntermediateRoutingResult.Type.NO_ROUTE
+            self.target = ""
             self.fork_targets = []
 
     def serialize(self):
         result = {
+            "type": str(self.type),
             "target": self.target.serialize() if self.target is not None else str(None),
         }
         if self.fork_targets:
@@ -256,7 +262,7 @@ class YateRoutingGenerationVisitor:
     def get_routing_results(self):
         return self._routing_results
 
-    def _make_intermediate_result(self, target: CallTarget, fork_targets=None):
+    def _make_intermediate_result(self, target: CallTarget = None, fork_targets=None):
         return IntermediateRoutingResult(target=target, fork_targets=fork_targets)
 
     def _make_calltarget(self, target: str, parameters: dict = None):
