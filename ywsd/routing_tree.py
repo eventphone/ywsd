@@ -217,7 +217,7 @@ class IntermediateRoutingResult:
             self.fork_targets = []
         else:
             self.type = IntermediateRoutingResult.Type.NO_ROUTE
-            self.target = ""
+            self.target = None
             self.fork_targets = []
 
     def serialize(self):
@@ -325,7 +325,7 @@ class YateRoutingGenerationVisitor:
                         continue
                     member_route = self._visit(member.extension, local_path)
                     if member.type.is_special_calltype:
-                        member_route.target.params["fork.calltype"] = member.type.fork_calltype
+                        member_route.target.parameters["fork.calltype"] = member.type.fork_calltype
                     # please note that we ignore the member modes for the time being
                     fork_targets.append(member_route.target)
                     self._cache_intermediate_result(member_route)

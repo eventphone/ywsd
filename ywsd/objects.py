@@ -289,7 +289,8 @@ class ForkRank(RoutingTreeNode):
                                nullable=False, index=True),
                      sa.Column("index", sa.Integer, nullable=False),
                      sa.Column("mode", ENUM("DEFAULT", "NEXT", "DROP", name="fork_rank_mode"), nullable=False),
-                     sa.Column("delay", sa.Integer)
+                     sa.Column("delay", sa.Integer),
+                     sa.CheckConstraint("(mode == 'DEFAULT') OR (delay IS NOT NULL)", name="delay_correct"),
                      )
     FIELDS_PLAIN = ("id", "extension_id", "index", "delay")
     FIELDS_TRANSFORM = (
