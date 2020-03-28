@@ -62,7 +62,10 @@ class YateRoutingEngine(YateAsync):
     async def main(self, _):
         logging.info("Initializing main application")
         self._shutdown_future = asyncio.get_event_loop().create_future()
-        asyncio.get_event_loop().add_signal_handler(signal.SIGINT, lambda: self._shutdown_future.set_result(True))
+        try:
+            asyncio.get_event_loop().add_signal_handler(signal.SIGINT, lambda: self._shutdown_future.set_result(True))
+        except NotImplementedError:
+            pass # Ignore if not implemented. Means this program is running in windows.
         logging.info("Initializing routing cache")
         self._routing_cache = class_from_dotted_string(self.settings.CACHE_IMPLEMENTATION)(self, self.settings)
 
