@@ -313,7 +313,8 @@ class YateRoutingGenerationVisitor:
                         accumulated_delay += rank.delay
                     else:
                         separator = "|"
-                    if accumulated_delay >= node.forwarding_delay:
+                    if node.forwarding_mode == Extension.ForwardingMode.ENABLED and \
+                            accumulated_delay >= node.forwarding_delay:
                         # all of those will not be called, as the forward takes effect now
                         break
                     # Do not generate default params on pseudo targets

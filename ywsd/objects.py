@@ -149,6 +149,8 @@ class Extension(RoutingTreeNode):
                      sa.Column("lang", sa.String(6), nullable=False),
                      sa.CheckConstraint("(forwarding_extension_id IS NOT NULL) OR (forwarding_mode = 'DISABLED')",
                                         name="fwd_correct"),
+                     sa.CheckConstraint("(forwarding_mode != 'ENABLED') OR (forwarding_delay IS NOT NULL)",
+                                        name="fwd_delay_correct"),
                      sa.CheckConstraint("(yate_id IS NOT NULL) OR (type != 'SIMPLE' AND type != 'MULTIRING')",
                                         name="yate_id_not_null_for_direct_ring"),
     )
