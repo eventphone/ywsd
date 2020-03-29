@@ -1,5 +1,6 @@
-sqlalchemy
 aiohttp
 aiopg
+aioredis
 python-yate
 pyyaml
+sqlalchemy

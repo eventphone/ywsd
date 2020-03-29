@@ -241,7 +241,7 @@ class IntermediateRoutingResult:
         target = data.get("target")
         if target is not None:
             target = CallTarget.deserialize(target)
-        fork_targets = data.get("fork_targets", [])
+        fork_targets = [CallTarget.deserialize(target) for target in data.get("fork_targets", [])]
         return cls(target=target, fork_targets=fork_targets)
 
     def __repr__(self):

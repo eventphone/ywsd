@@ -10,7 +10,11 @@ LOCAL_YATE_ID: 2
 
 INTERNAL_YATE_LISTENER: voip
 
-CACHE_IMPLEMENTATION: "ywsd.routing_cache.PythonDictRoutingCache"
+CACHE_IMPLEMENTATION: "ywsd.routing_cache.RedisRoutingCache"
+
+CACHE_CONFIG:
+  address: "/run/redis/redis.sock"
+  object_lifetime: 600
 
 LOG_FILE:
 LOG_VERBOSE:

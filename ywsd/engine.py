@@ -68,6 +68,7 @@ class YateRoutingEngine(YateAsync):
             pass # Ignore if not implemented. Means this program is running in windows.
         logging.info("Initializing routing cache")
         self._routing_cache = class_from_dotted_string(self.settings.CACHE_IMPLEMENTATION)(self, self.settings)
+        await self._routing_cache.init()
 
         logging.info("Initializing database engine")
         async with aiopg.sa.create_engine(**self._settings.DB_CONFIG) as db_engine:
@@ -97,6 +98,7 @@ class YateRoutingEngine(YateAsync):
                 logging.info("Ready to route")
                 await self._shutdown_future
 
+        await self._routing_cache.stop()
         self._routing_db_engine = None
         self._stage2_db_engine = None
 
