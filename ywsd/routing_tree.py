@@ -48,6 +48,8 @@ class RoutingTree:
         self.routing_result = result
         self.all_routing_results = visitor.get_routing_results()
         self.new_routing_cache_content = visitor.get_routing_cache_content()
+        if not result.is_valid:
+            raise RoutingError("noroute", "The main routing target returned NO_ROUTE.")
 
     def _provide_ringback(self):
         if self.target.ringback is not None:
@@ -208,9 +210,14 @@ class IntermediateRoutingResult:
 
     def __init__(self, target: CallTarget = None, fork_targets: List['CallTarget'] = None):
         if fork_targets is not None:
-            self.type = IntermediateRoutingResult.Type.FORK
-            self.fork_targets = fork_targets
-            self.target = target
+            if len(fork_targets) > 0:
+                self.type = IntermediateRoutingResult.Type.FORK
+                self.fork_targets = fork_targets
+                self.target = target
+            else:
+                self.type = IntermediateRoutingResult.Type.NO_ROUTE
+                self.target = None
+                self.fork_targets = []
         elif target is not None:
             self.type = IntermediateRoutingResult.Type.SIMPLE
             self.target = target
@@ -245,6 +252,10 @@ class IntermediateRoutingResult:
     @property
     def is_simple(self):
         return self.type == IntermediateRoutingResult.Type.SIMPLE
+
+    @property
+    def is_valid(self):
+        return self.type != IntermediateRoutingResult.Type.NO_ROUTE
 
 
 class YateRoutingGenerationVisitor:
@@ -300,8 +311,6 @@ class YateRoutingGenerationVisitor:
             # go through the callgroup ranks to issue the groups of the fork
             fork_targets = []
             accumulated_delay = 0
-            # TODO: Empty default ranks might make the callfork hang and should be removed.
-            #  Empty other ranks could be ok if I got the code right.
             for rank in node.fork_ranks:
                 if fork_targets:
                     # this is not the first rank, so we need to generate a separator
@@ -313,9 +322,17 @@ class YateRoutingGenerationVisitor:
                         accumulated_delay += rank.delay
                     else:
                         separator = "|"
+                        # If we see an untimed separator, any time-based forward is not possible anymore
+                        if node.forwarding_mode == Extension.ForwardingMode.ENABLED:
+                            node.routing_log("Non time-based fork rank is incompatible with time-based forward. "
+                                             "Disabling the forward.", "WARN", rank)
+                            node.forwarding_mode = Extension.ForwardingMode.DISABLED
+
                     if node.forwarding_mode == Extension.ForwardingMode.ENABLED and \
                             accumulated_delay >= node.forwarding_delay:
                         # all of those will not be called, as the forward takes effect now
+                        node.routing_log("Fork rank (and following) are ignored due to time-based forward.",
+                                         "WARN", rank)
                         break
                     # Do not generate default params on pseudo targets
                     fork_targets.append(CallTarget(separator))
@@ -324,17 +341,27 @@ class YateRoutingGenerationVisitor:
                     if not member.active:
                         continue
                     member_route = self._visit(member.extension, local_path)
+                    if not member_route.is_valid:
+                        rank.routing_log("Extension has no valid (non-empty) routing and is thus ignored.", "WARN",
+                                         member.extension)
+                        continue
                     if member.type.is_special_calltype:
                         member_route.target.parameters["fork.calltype"] = member.type.fork_calltype
                     # please note that we ignore the member modes for the time being
                     fork_targets.append(member_route.target)
                     self._cache_intermediate_result(member_route)
 
+                if fork_targets and fork_targets[-1].target == "|":
+                    # We just created an empty default rank. This will cause the call to hang
+                    del fork_targets[-1]
+                    rank.routing_log("This created an empty default rank. It will be removed to prevent call hang.",
+                                     "WARN")
+
             # if this is a MULTIRING or (SIMPLE with forward), the extension itself needs to be part of the first group
             if node.type in (Extension.Type.MULTIRING, Extension.Type.SIMPLE):
                 fork_targets.insert(0, self.generate_simple_routing_target(node))
-            # we might need to issue a delayed forward
 
+            # Handle forwards
             if node.forwarding_mode == Extension.ForwardingMode.ON_BUSY:
                 # There should be no call waiting on all previous call legs.
                 for target in fork_targets:
@@ -384,6 +411,9 @@ class YateRoutingGenerationVisitor:
         return False
 
     def generate_simple_routing_target(self, node: Extension):
+        if node.type == Extension.Type.EXTERNAL:
+            # External things are handled by regexroute, just issue a lateroute that triggers this
+            return self._make_calltarget("lateroute/{}".format(node.extension))
         if node.yate_id is None:
             raise RoutingError("failure", "Extension {} is misconfigured - yate_id is NULL.".format(node))
         if node.yate_id == self._local_yate_id:
