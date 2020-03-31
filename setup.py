@@ -25,6 +25,7 @@ setup(
     ],
     install_requires=[
         "aiopg",
+        "aiohttp",
         "python-yate",
         "pyyaml",
         "sqlalchemy",
