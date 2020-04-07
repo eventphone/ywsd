@@ -53,7 +53,7 @@ class RoutingTree:
 
     def _provide_ringback(self):
         if self.target.ringback is not None:
-            ringback_path = os.path.join(self._settings.RINGBACK_TOP_DIRECTORY, self.target.ringback)
+            ringback_path = os.path.join(self._settings.RINGBACK_TOP_DIRECTORY, self.target.ringback) + ".slin"
             if os.path.isfile(ringback_path):
                 if self.routing_result.is_simple:
                     # we need to convert routing result into a simple fork
