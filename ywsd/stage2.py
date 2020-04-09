@@ -35,26 +35,24 @@ class RoutingTask:
             try:
                 target = await User.load_user(called, db_connection)
             except DoesNotExist:
-                self._message.params["error"] = "noroute"
-                self._message.params["reason"] = "noroute"
-                return False
+                return False, False
 
             if target.location is None or target.location == "":
                 self._message.params["error"] = "offline"
                 self._message.params["reason"] = "offline"
-                return False
+                return False, True
 
             headers = get_headers(self._message)
             if (headers["X-No-Call-Wait"] == "1" or not target.call_waiting) and target.inuse > 0:
                 self._message.params["error"] = "busy"
-                return False
+                return False, True
             if await ActiveCall.is_active_call("called", headers["X-Eventphone-Id"], db_connection):
                 self._message.params["error"] = "busy"
-                return False
+                return False, True
             else:
                 self._message.return_value = target.location
                 self._message.params["oconnection_id"] = target.oconnection_id
-                return True
+                return True, True
 
     @retry_db_offline(count=4, wait_ms=1000)
     async def routing_job(self):
@@ -68,10 +66,12 @@ class RoutingTask:
             self._yate.answer_message(self._message, False)
             return
 
-        success = await self._calculate_stage2_routing(caller, called)
+        success, handled = await self._calculate_stage2_routing(caller, called)
         if success:
             logging.debug("Routing successful. Target is {}".format(self._message.return_value))
-        else:
+        elif handled:
             logging.debug("Routing not successful. Error is {}.".format(self._message.params["error"]))
+        else:
+            logging.debug("Routing not successful, noroute, pass message on")
 
-        self._yate.answer_message(self._message, True)
+        self._yate.answer_message(self._message, handled)

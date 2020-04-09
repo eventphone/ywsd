@@ -14,12 +14,13 @@ class RoutingError(Exception):
 
 
 class RoutingTree:
-    def __init__(self, source, target, settings):
+    def __init__(self, source, target, source_params, settings):
         self.source_extension = source
         self.target_extension = target
         self.source = None
         self.target = None
         self._settings = settings
+        self._source_params = source_params
 
         self.routing_result = None
         self.new_routing_cache_content = {}
@@ -35,7 +36,7 @@ class RoutingTree:
             Tuple['IntermediateRoutingResult', Dict[str, 'IntermediateRoutingResult']]:
         self._calculate_main_routing(local_yate, yates_dict)
         self._provide_ringback()
-        self._populate_eventphone_parameters()
+        self._populate_caller_parameters()
 
         return self.routing_result, self.new_routing_cache_content
 
@@ -68,24 +69,12 @@ class RoutingTree:
                     # if the routing target is already a callfork, just prepend the ringback target to the first group
                     self.routing_result.fork_targets.insert(0, self._make_ringback_target(ringback_path))
 
-    def _calculate_eventphone_parameters(self):
-        # push parameters here like faked-caller-id or caller-language
-        eventphone_parameters = {}
-        if self.source.outgoing_extension is not None and self.source.outgoing_extension != "":
-            eventphone_parameters["caller"] = self.source.outgoing_extension
-            eventphone_parameters["callername"] = self.source.outgoing_name
-        else:
-            # avoid name spoofing
-            eventphone_parameters["callername"] = self.source.name
-        if self.source.lang is not None:
-            eventphone_parameters["osip_X-Caller-Language"] = self.source.lang
-        return eventphone_parameters
 
-    def _populate_eventphone_parameters(self):
-        eventphone_parameters = self._calculate_eventphone_parameters()
-        self.routing_result.target.parameters.update(eventphone_parameters)
+    def _populate_caller_parameters(self):
+        caller_parameters = self._source_params
+        self.routing_result.target.parameters.update(caller_parameters)
         for entry in self.new_routing_cache_content.values():
-            entry.target.parameters.update(eventphone_parameters)
+            entry.target.parameters.update(caller_parameters)
 
     @staticmethod
     def _make_ringback_target(path):
