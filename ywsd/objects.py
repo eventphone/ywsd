@@ -74,7 +74,7 @@ class ActiveCall:
 
 class Yate:
     table = sa.Table("Yate", metadata,
-                     sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+                     sa.Column("id", sa.Integer, primary_key=True),
                      sa.Column("hostname", sa.String(256), nullable=False),
                      sa.Column("guru3_identifier", sa.String(32), nullable=False),
                      sa.Column("voip_listener", sa.String(256), nullable=False)
