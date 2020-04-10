@@ -37,6 +37,7 @@ class RoutingTree:
         self._calculate_main_routing(local_yate, yates_dict)
         self._provide_ringback()
         self._populate_caller_parameters()
+        self._populate_called_parameters()
 
         return self.routing_result, self.new_routing_cache_content
 
@@ -69,12 +70,14 @@ class RoutingTree:
                     # if the routing target is already a callfork, just prepend the ringback target to the first group
                     self.routing_result.fork_targets.insert(0, self._make_ringback_target(ringback_path))
 
-
     def _populate_caller_parameters(self):
         caller_parameters = self._source_params
         self.routing_result.target.parameters.update(caller_parameters)
         for entry in self.new_routing_cache_content.values():
             entry.target.parameters.update(caller_parameters)
+
+    def _populate_called_parameters(self):
+        self.routing_result.target.parameters["calledname"] = self.target.name
 
     @staticmethod
     def _make_ringback_target(path):
