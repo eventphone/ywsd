@@ -44,6 +44,8 @@ class RoutingTask:
             source_parameters["callername"] = source.name
         if source.lang is not None:
             source_parameters["osip_X-Caller-Language"] = source.lang
+        if source.dialout_allowed:
+            source_parameters["osip_X-Dialout-Allowed"] = "1"
         return source_parameters
 
     async def _calculate_stage1_routing(self, caller, called):

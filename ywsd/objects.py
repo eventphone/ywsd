@@ -140,6 +140,7 @@ class Extension(RoutingTreeNode):
                                nullable=False),
                      sa.Column("outgoing_extension", sa.String(32)),
                      sa.Column("outgoing_name", sa.String(64)),
+                     sa.Column("dialout_allowed", sa.Boolean, server_default="0"),
                      sa.Column("ringback", sa.String(128)),
                      sa.Column("forwarding_mode", ENUM("DISABLED", "ENABLED", "ON_BUSY", name="forwarding_mode"),
                                nullable=False),
@@ -154,8 +155,8 @@ class Extension(RoutingTreeNode):
                      sa.CheckConstraint("(yate_id IS NOT NULL) OR (type != 'SIMPLE' AND type != 'MULTIRING')",
                                         name="yate_id_not_null_for_direct_ring"),
     )
-    FIELDS_PLAIN = ("id", "yate_id", "extension", "name", "outgoing_extension", "outgoing_name", "ringback",
-                    "forwarding_delay", "forwarding_extension_id", "lang")
+    FIELDS_PLAIN = ("id", "yate_id", "extension", "name", "outgoing_extension", "outgoing_name", "dialout_allowed",
+                    "ringback", "forwarding_delay", "forwarding_extension_id", "lang")
     FIELDS_TRANSFORM = (
         ("type", lambda x: Extension.Type[x]),
         ("forwarding_mode", lambda x: Extension.ForwardingMode[x]),
