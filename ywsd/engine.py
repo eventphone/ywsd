@@ -12,7 +12,7 @@ from yate.asyncio import YateAsync
 from yate.protocol import Message
 
 import ywsd.yate
-from ywsd.objects import Yate
+from ywsd.objects import Yate, Extension, DoesNotExist
 from ywsd import stage1, stage2
 from ywsd.util import class_from_dotted_string
 from ywsd.routing_cache import RoutingCacheBase
@@ -155,7 +155,12 @@ class YateRoutingEngine(YateAsync):
         routing_status_details = ""
         try:
             async with self.routing_db_engine.acquire() as db_connection:
-                routing_tree = RoutingTree(caller, called, self.settings)
+                try:
+                    caller_extension = await Extension.load_extension(caller, db_connection)
+                except DoesNotExist:
+                    caller_extension = Extension.create_external(caller)
+                caller_params = stage1.RoutingTask.calculate_source_parameters(caller_extension)
+                routing_tree = RoutingTree(caller_extension, called, caller_params, self.settings)
                 await routing_tree.discover_tree(db_connection)
 
             routing_result, routing_cache_entries = routing_tree.calculate_routing(self.settings.LOCAL_YATE_ID,

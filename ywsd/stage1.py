@@ -33,7 +33,7 @@ class RoutingTask:
                 return Extension.create_external(caller)
 
     @staticmethod
-    def _calculate_source_parameters(source: Extension):
+    def calculate_source_parameters(source: Extension):
         # push parameters here like faked-caller-id or caller-language
         source_parameters = {}
         if source.outgoing_extension is not None and source.outgoing_extension != "":
@@ -51,7 +51,7 @@ class RoutingTask:
             async with self._yate.routing_db_engine.acquire() as db_connection:
                 caller = await self._sanitize_caller(caller, db_connection)
                 if caller.type != Extension.Type.EXTERNAL:
-                    caller_params = RoutingTask._calculate_source_parameters(caller)
+                    caller_params = RoutingTask.calculate_source_parameters(caller)
                 else:
                     caller_params = {}
 
