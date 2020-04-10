@@ -36,8 +36,7 @@ class RoutingTree:
             Tuple['IntermediateRoutingResult', Dict[str, 'IntermediateRoutingResult']]:
         self._calculate_main_routing(local_yate, yates_dict)
         self._provide_ringback()
-        self._populate_caller_parameters()
-        self._populate_called_parameters()
+        self._populate_source_and_target_parameters()
 
         return self.routing_result, self.new_routing_cache_content
 
@@ -70,14 +69,24 @@ class RoutingTree:
                     # if the routing target is already a callfork, just prepend the ringback target to the first group
                     self.routing_result.fork_targets.insert(0, self._make_ringback_target(ringback_path))
 
-    def _populate_caller_parameters(self):
-        caller_parameters = self._source_params
-        self.routing_result.target.parameters.update(caller_parameters)
+    def _populate_parameters_global(self, parameters):
+        self.routing_result.target.parameters.update(parameters)
         for entry in self.new_routing_cache_content.values():
-            entry.target.parameters.update(caller_parameters)
+            entry.target.parameters.update(parameters)
 
-    def _populate_called_parameters(self):
-        self.routing_result.target.parameters["calledname"] = self.target.name
+    def _populate_source_and_target_parameters(self):
+        parameters = self._source_params
+        if self.target.name is not None:
+            parameters["calledname"] = self.target.name
+
+        if self.target.type == Extension.Type.GROUP and self.target.short_name is not None:
+            # Callername should always be populated by source parameters, otherwise, default to source name
+            callername = self._source_params.get("callername", self.source.name)
+            parameters["callername"] = "[{}] {}".format(self.target.short_name, callername)
+
+        self._populate_parameters_global(parameters)
+
+
 
     @staticmethod
     def _make_ringback_target(path):
