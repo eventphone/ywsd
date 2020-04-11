@@ -414,7 +414,7 @@ class YateRoutingGenerationVisitor:
     def generate_simple_routing_target(self, node: Extension):
         if node.type == Extension.Type.EXTERNAL:
             # External things are handled by regexroute, just issue a lateroute that triggers this
-            return self._make_calltarget("lateroute/{}".format(node.extension))
+            return self._make_calltarget("lateroute/{}".format(node.extension), {"eventphone_stage2": "1"})
         if node.yate_id is None:
             raise RoutingError("failure", "Extension {} is misconfigured - yate_id is NULL.".format(node))
         if node.yate_id == self._local_yate_id:
