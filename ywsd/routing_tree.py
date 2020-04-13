@@ -378,7 +378,8 @@ class YateRoutingGenerationVisitor:
                     if not target.is_separator:
                         target.parameters["osip_X-No-Call-Wait"] = "1"
 
-            if node.forwarding_mode in (Extension.ForwardingMode.ENABLED, Extension.ForwardingMode.ON_BUSY):
+            if node.forwarding_mode in (Extension.ForwardingMode.ENABLED, Extension.ForwardingMode.ON_BUSY,
+                                        Extension.ForwardingMode.ON_UNAVAILABLE):
                 # this is non-immediate forward
                 forwarding_route = self._visit(node.forwarding_extension, local_path)
                 if node.forwarding_mode == Extension.ForwardingMode.ENABLED:
@@ -405,7 +406,7 @@ class YateRoutingGenerationVisitor:
         if node.type == Extension.Type.SIMPLE:
             if node.forwarding_mode == Extension.ForwardingMode.DISABLED:
                 return True
-            # Forwarding with delay or ON_BUSY requires a callfork
+            # Forwarding with delay or ON_BUSY/UNAVAILABLE requires a callfork
             return False
         # multiring is simple, if there are no active multiring participants configured
         if node.type == Extension.Type.MULTIRING:
@@ -414,7 +415,7 @@ class YateRoutingGenerationVisitor:
             # ok, nothing to multiring, so look at the forwarding mode
             if node.forwarding_mode == Extension.ForwardingMode.DISABLED:
                 return True
-            # Forwarding with delay or ON_BUSY requires a callfork
+            # Forwarding with delay or ON_BUSY/UNAVAILABLE requires a callfork
             return False
         # groups might have a simple routing if they have exactly one participant. We will ignore this possibility
         # for the moment being. We could do this by introducing an optimizer stage that reshapes the tree :P

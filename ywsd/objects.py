@@ -162,7 +162,8 @@ class Extension(RoutingTreeNode):
                      sa.Column("outgoing_name", sa.String(64)),
                      sa.Column("dialout_allowed", sa.Boolean, server_default="0"),
                      sa.Column("ringback", sa.String(128)),
-                     sa.Column("forwarding_mode", ENUM("DISABLED", "ENABLED", "ON_BUSY", name="forwarding_mode"),
+                     sa.Column("forwarding_mode", ENUM("DISABLED", "ENABLED", "ON_BUSY", "ON_UNAVAILABLE",
+                                                       name="forwarding_mode"),
                                nullable=False),
                      sa.Column("forwarding_delay", sa.Integer),
                      sa.Column("forwarding_extension_id", sa.Integer, sa.ForeignKey("Extension.id",
@@ -193,6 +194,7 @@ class Extension(RoutingTreeNode):
         DISABLED = 0
         ENABLED = 1
         ON_BUSY = 2
+        ON_UNAVAILABLE = 3
 
     def __init__(self, db_row, prefix=None):
         super().__init__()
@@ -391,7 +393,8 @@ async def initialize_database(connection, stage2_only=False, stage1_only=False):
     if not stage2_only:
         await connection.execute("CREATE TYPE extension_type AS ENUM('SIMPLE', 'MULTIRING', 'GROUP', 'EXTERNAL', "
                                  "'TRUNK')")
-        await connection.execute("CREATE TYPE forwarding_mode AS ENUM('DISABLED', 'ENABLED', 'ON_BUSY')")
+        await connection.execute("CREATE TYPE forwarding_mode AS ENUM('DISABLED', 'ENABLED', 'ON_BUSY', "
+                                 "'ON_UNAVAILABLE')")
         await connection.execute("CREATE TYPE fork_rank_mode AS ENUM('DEFAULT', 'NEXT', 'DROP')")
         await connection.execute("CREATE TYPE fork_rankmember_type AS ENUM('DEFAULT', 'AUXILIARY', 'PERSISTENT')")
 
@@ -411,20 +414,24 @@ async def initialize_database(connection, stage2_only=False, stage1_only=False):
 
 
 async def regenerate_database_objects(connection, stage2_only=False, stage1_only=False):
-    await connection.execute("DROP TABLE IF EXISTS \"Yate\" CASCADE")
-    await connection.execute("DROP TABLE IF EXISTS \"Extension\" CASCADE")
-    await connection.execute("DROP TABLE IF EXISTS \"ForkRank\" CASCADE")
-    await connection.execute("DROP TABLE IF EXISTS \"ForkRankMember\" CASCADE")
+    if not stage2_only:
+        await connection.execute("DROP TABLE IF EXISTS \"Yate\" CASCADE")
+        await connection.execute("DROP TABLE IF EXISTS \"Extension\" CASCADE")
+        await connection.execute("DROP TABLE IF EXISTS \"ForkRank\" CASCADE")
+        await connection.execute("DROP TABLE IF EXISTS \"ForkRankMember\" CASCADE")
 
-    await connection.execute("DROP TABLE IF EXISTS users CASCADE")
-    await connection.execute("DROP TABLE IF EXISTS active_calls CASCADE")
-    await connection.execute("DROP TABLE IF EXISTS registrations CASCADE")
+    if not stage1_only:
+        await connection.execute("DROP TABLE IF EXISTS users CASCADE")
+        await connection.execute("DROP TABLE IF EXISTS active_calls CASCADE")
+        await connection.execute("DROP TABLE IF EXISTS registrations CASCADE")
 
-    await connection.execute("DROP TYPE IF EXISTS extension_type")
-    await connection.execute("DROP TYPE IF EXISTS dect_displaymode")
-    await connection.execute("DROP TYPE IF EXISTS forwarding_mode")
-    await connection.execute("DROP TYPE IF EXISTS fork_rank_mode")
-    await connection.execute("DROP TYPE IF EXISTS fork_rankmember_type")
+        await connection.execute("DROP TYPE IF EXISTS dect_displaymode")
+
+    if not stage2_only:
+        await connection.execute("DROP TYPE IF EXISTS extension_type")
+        await connection.execute("DROP TYPE IF EXISTS forwarding_mode")
+        await connection.execute("DROP TYPE IF EXISTS fork_rank_mode")
+        await connection.execute("DROP TYPE IF EXISTS fork_rankmember_type")
 
     await initialize_database(connection, stage2_only, stage1_only)
 
