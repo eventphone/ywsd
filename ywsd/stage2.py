@@ -2,7 +2,7 @@ import logging
 
 from yate.protocol import Message
 
-from ywsd.objects import User, ActiveCall, DoesNotExist
+from ywsd.objects import User, ActiveCall, Registration, DoesNotExist
 from ywsd.util import retry_db_offline
 
 
@@ -37,7 +37,9 @@ class RoutingTask:
             except DoesNotExist:
                 return False, False
 
-            if target.location is None or target.location == "":
+            locations = await Registration.load_locations(called, db_connection)
+
+            if not locations:
                 self._message.params["error"] = "offline"
                 self._message.params["reason"] = "offline"
                 return False, True
@@ -50,8 +52,14 @@ class RoutingTask:
                 self._message.params["error"] = "busy"
                 return False, True
             else:
-                self._message.return_value = target.location
-                self._message.params["oconnection_id"] = target.oconnection_id
+                if len(locations) == 1:
+                    self._message.return_value = target.location
+                    self._message.params["oconnection_id"] = target.oconnection_id
+                else:
+                    self._message.return_value = "fork"
+                    for i, location in enumerate(locations, start=0):
+                        self._message.params["callto.{}".format(i)] = location.location
+                        self._message.params["callto.{}.oconnection_id".format(i)] = location.oconnection_id
                 self._message.params["X-Eventphone-Id"] = headers["X-Eventphone-Id"]
                 if ("copyparams" in self._message.params):
                   self._message.params["copyparams"] += ",X-Eventphone-Id"

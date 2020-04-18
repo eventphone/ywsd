@@ -29,16 +29,12 @@ class User:
                      sa.Column("displayname", sa.String(64), server_default="EventphoneUser", nullable=False),
                      sa.Column("password", sa.String(128), nullable=False),
                      sa.Column("inuse", sa.Integer, nullable=False, server_default="0"),
-                     sa.Column("location", sa.String(1024)),
-                     sa.Column("expires", sa.TIMESTAMP),
                      sa.Column("type", sa.String(20), server_default="user"),
                      sa.Column("dect_displaymode", ENUM("NUMBER", "NUMBER_AND_NAME", "NAME", name="dect_displaymode")),
-                     sa.Column("call_waiting", sa.Boolean, nullable=False, server_default='1'),
-                     sa.Column("oconnection_id", sa.String(1024))
+                     sa.Column("call_waiting", sa.Boolean, nullable=False, server_default='1')
                      )
 
-    FIELDS_PLAIN = ("username", "displayname", "password", "inuse", "location", "expires", "type",
-                    "call_waiting", "oconnection_id")
+    FIELDS_PLAIN = ("username", "displayname", "password", "inuse", "type", "call_waiting")
     FIELDS_TRANSFORM = (
         ("dect_displaymode", lambda x: User.DectDisplaymode[x] if x is not None else None),
     )
@@ -60,9 +56,31 @@ class User:
         return cls(await res.first())
 
 
+class Registration:
+    table = sa.Table("registrations", metadata,
+                     sa.Column("username", sa.String(32), sa.ForeignKey("users.username", ondelete="CASCADE"), nullable=False),
+                     sa.Column("location", sa.String(1024)),
+                     sa.Column("oconnection_id", sa.String(1024)),
+                     sa.Column("expires", sa.TIMESTAMP),
+                     sa.UniqueConstraint("username", "location", "oconnection_id", name="uniq1")
+                     )
+
+    FIELDS_PLAIN = ("username", "location", "oconnection_id", "expires")
+
+    def __init__(self, db_row, prefix=None):
+        _plain_loader(self.FIELDS_PLAIN, db_row, self, prefix=prefix)
+
+    @classmethod
+    async def load_locations(cls, username, db_connection):
+        result = []
+        res = await db_connection.execute(cls.table.select().where(cls.table.c.username == username))
+        async for row in res:
+            result.append(cls(row))
+        return result
+
 class ActiveCall:
     table = sa.Table("active_calls", metadata,
-                     sa.Column("username", sa.String(128), sa.ForeignKey("users.username"), nullable=False),
+                     sa.Column("username", sa.String(32), sa.ForeignKey("users.username", ondelete="CASCADE"), nullable=False),
                      sa.Column("x_eventphone_id", sa.String(64), nullable=False),
                      )
 
