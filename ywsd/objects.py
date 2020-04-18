@@ -63,7 +63,7 @@ class Registration:
                      sa.Column("location", sa.String(1024), nullable=False),
                      sa.Column("oconnection_id", sa.String(1024), nullable=False),
                      sa.Column("expires", sa.TIMESTAMP, nullable=False),
-                     sa.UniqueConstraint("username", "location", "oconnection_id", name="uniq1")
+                     sa.UniqueConstraint("username", "location", "oconnection_id", name="uniq_registrations")
                      )
 
     FIELDS_PLAIN = ("username", "location", "oconnection_id", "expires")
