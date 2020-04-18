@@ -403,6 +403,7 @@ async def initialize_database(connection, stage2_only=False, stage1_only=False):
 
     if not stage1_only:
         await connection.execute(CreateTable(User.table))
+        await connection.execute(CreateTable(Registration.table))
         await connection.execute(CreateTable(ActiveCall.table))
 
 
@@ -414,6 +415,7 @@ async def regenerate_database_objects(connection, stage2_only=False, stage1_only
 
     await connection.execute("DROP TABLE IF EXISTS users CASCADE")
     await connection.execute("DROP TABLE IF EXISTS active_calls CASCADE")
+    await connection.execute("DROP TABLE IF EXISTS registrations CASCADE")
 
     await connection.execute("DROP TYPE IF EXISTS extension_type")
     await connection.execute("DROP TYPE IF EXISTS dect_displaymode")
