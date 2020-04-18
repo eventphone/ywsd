@@ -57,7 +57,7 @@ class RoutingTask:
                     self._message.params["oconnection_id"] = locations[0].oconnection_id
                 else:
                     self._message.return_value = "fork"
-                    for i, location in enumerate(locations, start=0):
+                    for i, location in enumerate(locations, start=1):
                         self._message.params["callto.{}".format(i)] = location.location
                         self._message.params["callto.{}.oconnection_id".format(i)] = location.oconnection_id
                 self._message.params["X-Eventphone-Id"] = headers["X-Eventphone-Id"]
