@@ -53,8 +53,8 @@ class RoutingTask:
                 return False, True
             else:
                 if len(locations) == 1:
-                    self._message.return_value = target.location
-                    self._message.params["oconnection_id"] = target.oconnection_id
+                    self._message.return_value = locations[0].location
+                    self._message.params["oconnection_id"] = locations[0].oconnection_id
                 else:
                     self._message.return_value = "fork"
                     for i, location in enumerate(locations, start=0):
