@@ -31,10 +31,11 @@ class User:
                      sa.Column("inuse", sa.Integer, nullable=False, server_default="0"),
                      sa.Column("type", sa.String(20), server_default="user"),
                      sa.Column("dect_displaymode", ENUM("NUMBER", "NUMBER_AND_NAME", "NAME", name="dect_displaymode")),
+                     sa.Column("trunk", sa.Boolean, nullable=False, server_default="0"),
                      sa.Column("call_waiting", sa.Boolean, nullable=False, server_default='1')
                      )
 
-    FIELDS_PLAIN = ("username", "displayname", "password", "inuse", "type", "call_waiting")
+    FIELDS_PLAIN = ("username", "displayname", "password", "inuse", "type", "trunk", "call_waiting")
     FIELDS_TRANSFORM = (
         ("dect_displaymode", lambda x: User.DectDisplaymode[x] if x is not None else None),
     )
@@ -155,7 +156,7 @@ class Extension(RoutingTreeNode):
                      sa.Column("extension", sa.String(32), nullable=False, unique=True),
                      sa.Column("name", sa.String(64)),
                      sa.Column("short_name", sa.String(8)),
-                     sa.Column("type", ENUM("SIMPLE", "MULTIRING", "GROUP", "EXTERNAL", name="extension_type"),
+                     sa.Column("type", ENUM("SIMPLE", "MULTIRING", "GROUP", "EXTERNAL", "TRUNK", name="extension_type"),
                                nullable=False),
                      sa.Column("outgoing_extension", sa.String(32)),
                      sa.Column("outgoing_name", sa.String(64)),
@@ -186,6 +187,7 @@ class Extension(RoutingTreeNode):
         MULTIRING = 1
         GROUP = 2
         EXTERNAL = 3
+        TRUNK = 4
 
     class ForwardingMode(Enum):
         DISABLED = 0
@@ -387,7 +389,8 @@ class ForkRank(RoutingTreeNode):
 
 async def initialize_database(connection, stage2_only=False, stage1_only=False):
     if not stage2_only:
-        await connection.execute("CREATE TYPE extension_type AS ENUM('SIMPLE', 'MULTIRING', 'GROUP', 'EXTERNAL')")
+        await connection.execute("CREATE TYPE extension_type AS ENUM('SIMPLE', 'MULTIRING', 'GROUP', 'EXTERNAL', "
+                                 "'TRUNK')")
         await connection.execute("CREATE TYPE forwarding_mode AS ENUM('DISABLED', 'ENABLED', 'ON_BUSY')")
         await connection.execute("CREATE TYPE fork_rank_mode AS ENUM('DEFAULT', 'NEXT', 'DROP')")
         await connection.execute("CREATE TYPE fork_rankmember_type AS ENUM('DEFAULT', 'AUXILIARY', 'PERSISTENT')")
