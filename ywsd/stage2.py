@@ -17,7 +17,7 @@ def get_headers(msg: Message):
     for header in HEADER_NAMES:
         value = msg.params.get("osip_" + header)
         if value is None:
-            value = msg.params.get("sip_" + header)
+            value = msg.params.get("sip_" + header.lower())
         headers[header] = value
     return headers
 
@@ -52,6 +52,11 @@ class RoutingTask:
             else:
                 self._message.return_value = target.location
                 self._message.params["oconnection_id"] = target.oconnection_id
+                self._message.params["X-Eventphone-Id"] = headers["X-Eventphone-Id"]
+                if ("copyparams" in self._message.params):
+                  self._message.params["copyparams"] += ",X-Eventphone-Id"
+                else:
+                  self._message.params["copyparams"] = "X-Eventphone-Id"
                 return True, True
 
     @retry_db_offline(count=4, wait_ms=1000)
