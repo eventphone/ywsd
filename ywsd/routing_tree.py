@@ -360,6 +360,15 @@ class YateRoutingGenerationVisitor:
 
             # if this is a MULTIRING or (SIMPLE with forward), the extension itself needs to be part of the first group
             if node.type in (Extension.Type.MULTIRING, Extension.Type.SIMPLE):
+                # in difference to groups, the first ForkRank can have type NEXT or DROP and we should respect it
+                if len(node.fork_ranks) > 0:
+                    first_fork_rank = node.fork_ranks[0]
+                    if first_fork_rank.mode == ForkRank.Mode.NEXT:
+                        fork_targets.insert(0, CallTarget("|next={}".format(first_fork_rank.delay)))
+                    elif first_fork_rank.mode == ForkRank.Mode.DROP:
+                        fork_targets.insert(0, CallTarget("|drop={}".format(first_fork_rank.delay)))
+                    # If the fork rank is default, we assume that multiring should start with the main extension
+                    # and do nothing here
                 fork_targets.insert(0, self.generate_simple_routing_target(node))
 
             # Handle forwards
