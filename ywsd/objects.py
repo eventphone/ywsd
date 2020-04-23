@@ -5,6 +5,7 @@ from enum import Enum
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.sql.ddl import CreateTable, CreateIndex
+from sqlalchemy.sql.expression import bindparam
 
 metadata = sa.MetaData()
 
@@ -56,6 +57,20 @@ class User:
             raise DoesNotExist("No user \"{}\" found".format(username))
         return cls(await res.first())
 
+    @classmethod
+    async def load_trunk(cls, dialed_number, db_connection):
+        res = await db_connection.execute(cls.table.select()
+                                                   .where(
+            bindparam('dialed_number', dialed_number).startswith(cls.table.c.username)
+                                                    )
+                                                   .where(cls.table.c.trunk == True)
+                                          )
+        if res.rowcount == 0:
+            raise DoesNotExist("No trunk for \"{}\" found".format(dialed_number))
+        elif res.rowcount > 1:
+            raise DoesNotExist("Trunk misconfiguration lead to multiple results for {}".format(dialed_number))
+        return cls(await res.first())
+
 
 class Registration:
     table = sa.Table("registrations", metadata,
@@ -68,16 +83,26 @@ class Registration:
 
     FIELDS_PLAIN = ("username", "location", "oconnection_id", "expires")
 
-    def __init__(self, db_row, prefix=None):
+    def __init__(self, db_row, prefix=None, user=None, dialed_number=None):
         _plain_loader(self.FIELDS_PLAIN, db_row, self, prefix=prefix)
+        self._user = user
+        self._dialed_number = dialed_number
 
     @classmethod
-    async def load_locations(cls, username, db_connection):
+    async def load_locations_for(cls, user: User, dialed_number, db_connection):
         result = []
-        res = await db_connection.execute(cls.table.select().where(cls.table.c.username == username))
-        async for row in res:
-            result.append(cls(row))
-        return result
+        res = await db_connection.execute(cls.table.select().where(cls.table.c.username == user.username))
+        return [cls(row, user=user, dialed_number=dialed_number) async for row in res]
+
+    @property
+    def call_target(self):
+        if self._user is None or self._user.trunk == False:
+            return self.location
+        # the location field has the format sip/sip:<user>@<ip>:<port>;<param>=<val>,...
+        # for a trunk we want to exchange user by the actually dialed number
+
+        return self.location.replace(f"{self._user.username}@", f"{self._dialed_number}@", 1)
+
 
 class ActiveCall:
     table = sa.Table("active_calls", metadata,
@@ -90,6 +115,7 @@ class ActiveCall:
         return (await db_connection.scalar(cls.table.count()
                                                     .where(cls.table.c.username == username)
                                                     .where(cls.table.c.x_eventphone_id == x_eventphone_id))) > 0
+
 
 class Yate:
     table = sa.Table("Yate", metadata,
@@ -262,6 +288,19 @@ class Extension(RoutingTreeNode):
         res = await db_connection.execute(cls.table.select().where(cls.table.c.extension == extension))
         if res.rowcount == 0:
             raise DoesNotExist("No extension \"{}\" found".format(extension))
+        return cls(await res.first())
+
+    @classmethod
+    async def load_trunk_extension(cls, dialed_number, db_connection):
+        res = await db_connection.execute(cls.table.select()
+                                                   .where(
+             bindparam('dialed_number', dialed_number).startswith(cls.table.c.extension)
+                                                   )
+                                                   .where(cls.table.c.type == "TRUNK"))
+        if res.rowcount == 0:
+            raise DoesNotExist("No trunk for \"{}\" found".format(dialed_number))
+        elif res.rowcount > 1:
+            raise DoesNotExist("Trunk misconfiguration lead to multiple results for {}".format(dialed_number))
         return cls(await res.first())
 
     async def load_forwarding_extension(self, db_connection):

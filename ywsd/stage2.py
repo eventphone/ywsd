@@ -27,6 +27,15 @@ class RoutingTask:
         self._yate = yate
         self._message = message
 
+    def populate_additional_message_parameters(self, headers):
+        self._message.params["X-Eventphone-Id"] = headers.get("X-Eventphone-Id", "")
+
+        # Make cdrbuild import the X-Eventphone-Id into the cdr record so that we can grab it from call.cdr
+        if "copyparams" in self._message.params:
+            self._message.params["copyparams"] += ",X-Eventphone-Id"
+        else:
+            self._message.params["copyparams"] = "X-Eventphone-Id"
+
     async def _calculate_stage2_routing(self, caller, called):
         if called.startswith("stage2-"):
             called = called[7:]
@@ -35,37 +44,39 @@ class RoutingTask:
             try:
                 target = await User.load_user(called, db_connection)
             except DoesNotExist:
-                return False, False
+                try:
+                    target = await User.load_trunk(called, db_connection)
+                except DoesNotExist:
+                    return False, False
 
-            locations = await Registration.load_locations(called, db_connection)
-
+            locations = await Registration.load_locations_for(target, called, db_connection)
             if not locations:
                 self._message.params["error"] = "offline"
                 self._message.params["reason"] = "offline"
                 return False, True
 
             headers = get_headers(self._message)
+
+            # Check if this call should be dropped
             if (headers["X-No-Call-Wait"] == "1" or not target.call_waiting) and target.inuse > 0:
                 self._message.params["error"] = "busy"
                 return False, True
             if await ActiveCall.is_active_call("called", headers["X-Eventphone-Id"], db_connection):
                 self._message.params["error"] = "busy"
                 return False, True
+
+            # calculate target(s)
+            if len(locations) == 1:
+                self._message.return_value = locations[0].call_target
+                self._message.params["oconnection_id"] = locations[0].oconnection_id
             else:
-                if len(locations) == 1:
-                    self._message.return_value = locations[0].location
-                    self._message.params["oconnection_id"] = locations[0].oconnection_id
-                else:
-                    self._message.return_value = "fork"
-                    for i, location in enumerate(locations, start=1):
-                        self._message.params["callto.{}".format(i)] = location.location
-                        self._message.params["callto.{}.oconnection_id".format(i)] = location.oconnection_id
-                self._message.params["X-Eventphone-Id"] = headers["X-Eventphone-Id"]
-                if ("copyparams" in self._message.params):
-                  self._message.params["copyparams"] += ",X-Eventphone-Id"
-                else:
-                  self._message.params["copyparams"] = "X-Eventphone-Id"
-                return True, True
+                self._message.return_value = "fork"
+                for i, location in enumerate(locations, start=1):
+                    self._message.params["callto.{}".format(i)] = location.call_target
+                    self._message.params["callto.{}.oconnection_id".format(i)] = location.oconnection_id
+
+            self.populate_additional_message_parameters(headers)
+            return True, True
 
     @retry_db_offline(count=4, wait_ms=1000)
     async def routing_job(self):

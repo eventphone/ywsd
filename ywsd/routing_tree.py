@@ -1,6 +1,6 @@
 import logging
 from enum import Enum
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 import os.path
 import uuid
 
@@ -26,11 +26,12 @@ class RoutingTree:
         self.new_routing_cache_content = {}
         self.all_routing_results = {}
 
-    async def discover_tree(self, db_connection):
+    async def discover_tree(self, db_connection) -> Optional['RoutingTreeDiscoveryVisitor']:
         await self._load_source_and_target(db_connection)
-        visitor = RoutingTreeDiscoveryVisitor(self.target, [self.source.extension])
-        await visitor.discover_tree(db_connection)
-        return visitor
+        if self.target.type != Extension.Type.TRUNK:
+            visitor = RoutingTreeDiscoveryVisitor(self.target, [self.source.extension])
+            await visitor.discover_tree(db_connection)
+            return visitor
 
     def calculate_routing(self, local_yate: int, yates_dict: Dict[int, Yate]) -> \
             Tuple['IntermediateRoutingResult', Dict[str, 'IntermediateRoutingResult']]:
@@ -45,7 +46,10 @@ class RoutingTree:
 
     def _calculate_main_routing(self, local_yate, yates_dict):
         visitor = YateRoutingGenerationVisitor(self, local_yate, yates_dict)
-        result = visitor.calculate_routing()
+        if self.target.type != Extension.Type.TRUNK:
+            result = visitor.calculate_routing()
+        else:
+            result = visitor.generate_trunk_routing(self.target, self.target_extension)
         self.routing_result = result
         self.all_routing_results = visitor.get_routing_results()
         self.new_routing_cache_content = visitor.get_routing_cache_content()
@@ -110,6 +114,13 @@ class RoutingTree:
             self.target = await Extension.load_extension(self.target_extension, db_connection)
             self.target.tree_identifier = str(self.target.id)
         except DoesNotExist:
+            # we give this one rescue attempt by trying to load a trunk
+            try:
+                self.target = await Extension.load_trunk_extension(self.target_extension, db_connection)
+                self.target.tree_identifier = str(self.target.id)
+                return
+            except DoesNotExist:
+                pass
             raise RoutingError("noroute", "Routing target was not found")
 
 
@@ -435,6 +446,19 @@ class YateRoutingGenerationVisitor:
                                          {
                                              "oconnection_id": self._yates_dict[node.yate_id].voip_listener,
                                          })
+
+    def generate_trunk_routing(self, trunk: Extension, dialed_number: str):
+        if trunk.yate_id is None:
+            raise RoutingError("failure", "Trunk-Extension {} is misconfigured - yate_id is NULL.".format(trunk))
+        if trunk.yate_id == self._local_yate_id:
+            return IntermediateRoutingResult(
+                target=self._make_calltarget("lateroute/{}".format(dialed_number), {"eventphone_stage2": "1"}))
+        else:
+            return IntermediateRoutingResult(target=self._make_calltarget("sip/sip:{}@{}"
+                                            .format(dialed_number, self._yates_dict[trunk.yate_id].hostname),
+                                            {
+                                                "oconnection_id": self._yates_dict[trunk.yate_id].voip_listener,
+                                            }))
 
     def generate_deferred_routestring(self, path):
         return "lateroute/" + self.generate_node_route_string(path)
