@@ -23,6 +23,7 @@ from ywsd.settings import Settings
 class YateRoutingEngine(YateAsync):
     def __init__(self, *args, **kwargs):
         self._settings = kwargs.pop("settings")
+        self._web_only = kwargs.pop("web_only")
         super().__init__(*args, **kwargs)
         self._shutdown_future = None
         self._routing_db_engine = None
@@ -56,8 +57,14 @@ class YateRoutingEngine(YateAsync):
         return self._stage2_db_engine
 
     def run(self):
-        logging.info("Initialiting YateAsync engine")
-        super().run(self.main)
+        if self._web_only:
+            logging.info("Starting up in web server only mode")
+            self.main_task = self.event_loop.create_task(self.main(42))
+            self.event_loop.run_until_complete(self.main_task)
+            self.event_loop.close()
+        else:
+            logging.info("Initializing YateAsync engine")
+            super().run(self.main)
 
     async def main(self, _):
         logging.info("Initializing main application")
@@ -65,7 +72,7 @@ class YateRoutingEngine(YateAsync):
         try:
             asyncio.get_event_loop().add_signal_handler(signal.SIGINT, lambda: self._shutdown_future.set_result(True))
         except NotImplementedError:
-            pass # Ignore if not implemented. Means this program is running in windows.
+            pass  # Ignore if not implemented. Means this program is running in windows.
         logging.info("Initializing routing cache")
         self._routing_cache = class_from_dotted_string(self.settings.CACHE_IMPLEMENTATION)(self, self.settings)
         await self._routing_cache.init()
@@ -90,10 +97,11 @@ class YateRoutingEngine(YateAsync):
                     await site.start()
                     logging.info("Webserver ready. Waiting for requests on {}:{}.".format(bind, port))
 
-                logging.info("Registering for routing messages")
-                if not await self.register_message_handler_async("call.route", self._call_route_handler, 90):
-                    logging.error("Cannot register for call.route. Terminating...")
-                    return
+                if not self._web_only:
+                    logging.info("Registering for routing messages")
+                    if not await self.register_message_handler_async("call.route", self._call_route_handler, 90):
+                        logging.error("Cannot register for call.route. Terminating...")
+                        return
 
                 logging.info("Ready to route")
                 await self._shutdown_future
@@ -192,6 +200,8 @@ def main():
     parser = argparse.ArgumentParser(description='Yate Routing Engine')
     parser.add_argument("--config", type=str, help="Config file to use.", default="routing_engine.yaml")
     parser.add_argument("--verbose", help="Print out debug logs.", action="store_true")
+    parser.add_argument("--web-only", help="Only start the webserver. Do not connect to yate", dest="web_only",
+                        action="store_true")
 
     args = parser.parse_args()
     settings = Settings(args.config)
@@ -212,7 +222,7 @@ def main():
     logging.debug("Debug logging enabled.")
 
     yate_connection = settings.YATE_CONNECTION
-    app = YateRoutingEngine(settings=settings, **yate_connection)
+    app = YateRoutingEngine(settings=settings, web_only=args.web_only, **yate_connection)
     app.run()
 
 
