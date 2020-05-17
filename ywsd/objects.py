@@ -12,12 +12,18 @@ metadata = sa.MetaData()
 
 def _plain_loader(fields, source, target, prefix=None):
     for field in fields:
-        setattr(target, field, getattr(source, field if prefix is None else prefix+field))
+        setattr(
+            target, field, getattr(source, field if prefix is None else prefix + field)
+        )
 
 
 def _transform_loader(fields, source, target, prefix=None):
     for field, transform in fields:
-        setattr(target, field, transform(getattr(source, field if prefix is None else prefix+field)))
+        setattr(
+            target,
+            field,
+            transform(getattr(source, field if prefix is None else prefix + field)),
+        )
 
 
 class DoesNotExist(Exception):
@@ -25,20 +31,43 @@ class DoesNotExist(Exception):
 
 
 class User:
-    table = sa.Table("users", metadata,
-                     sa.Column("username", sa.String(32), unique=True, nullable=False, primary_key=True),
-                     sa.Column("displayname", sa.String(64), server_default="EventphoneUser", nullable=False),
-                     sa.Column("password", sa.String(128), nullable=False),
-                     sa.Column("inuse", sa.Integer, nullable=False, server_default="0"),
-                     sa.Column("type", sa.String(20), server_default="user"),
-                     sa.Column("dect_displaymode", ENUM("NUMBER", "NUMBER_AND_NAME", "NAME", name="dect_displaymode")),
-                     sa.Column("trunk", sa.Boolean, nullable=False, server_default="0"),
-                     sa.Column("call_waiting", sa.Boolean, nullable=False, server_default='1')
-                     )
+    table = sa.Table(
+        "users",
+        metadata,
+        sa.Column(
+            "username", sa.String(32), unique=True, nullable=False, primary_key=True
+        ),
+        sa.Column(
+            "displayname",
+            sa.String(64),
+            server_default="EventphoneUser",
+            nullable=False,
+        ),
+        sa.Column("password", sa.String(128), nullable=False),
+        sa.Column("inuse", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("type", sa.String(20), server_default="user"),
+        sa.Column(
+            "dect_displaymode",
+            ENUM("NUMBER", "NUMBER_AND_NAME", "NAME", name="dect_displaymode"),
+        ),
+        sa.Column("trunk", sa.Boolean, nullable=False, server_default="0"),
+        sa.Column("call_waiting", sa.Boolean, nullable=False, server_default="1"),
+    )
 
-    FIELDS_PLAIN = ("username", "displayname", "password", "inuse", "type", "trunk", "call_waiting")
+    FIELDS_PLAIN = (
+        "username",
+        "displayname",
+        "password",
+        "inuse",
+        "type",
+        "trunk",
+        "call_waiting",
+    )
     FIELDS_TRANSFORM = (
-        ("dect_displaymode", lambda x: User.DectDisplaymode[x] if x is not None else None),
+        (
+            "dect_displaymode",
+            lambda x: User.DectDisplaymode[x] if x is not None else None,
+        ),
     )
 
     class DectDisplaymode(Enum):
@@ -52,34 +81,52 @@ class User:
 
     @classmethod
     async def load_user(cls, username, db_connection):
-        res = await db_connection.execute(cls.table.select().where(cls.table.c.username == username))
+        res = await db_connection.execute(
+            cls.table.select().where(cls.table.c.username == username)
+        )
         if res.rowcount == 0:
-            raise DoesNotExist("No user \"{}\" found".format(username))
+            raise DoesNotExist('No user "{}" found'.format(username))
         return cls(await res.first())
 
     @classmethod
     async def load_trunk(cls, dialed_number, db_connection):
-        res = await db_connection.execute(cls.table.select()
-                                                   .where(
-            bindparam('dialed_number', dialed_number).startswith(cls.table.c.username)
-                                                    )
-                                                   .where(cls.table.c.trunk == True)
-                                          )
+        res = await db_connection.execute(
+            cls.table.select()
+            .where(
+                bindparam("dialed_number", dialed_number).startswith(
+                    cls.table.c.username
+                )
+            )
+            .where(cls.table.c.trunk == True)
+        )
         if res.rowcount == 0:
-            raise DoesNotExist("No trunk for \"{}\" found".format(dialed_number))
+            raise DoesNotExist('No trunk for "{}" found'.format(dialed_number))
         elif res.rowcount > 1:
-            raise DoesNotExist("Trunk misconfiguration lead to multiple results for {}".format(dialed_number))
+            raise DoesNotExist(
+                "Trunk misconfiguration lead to multiple results for {}".format(
+                    dialed_number
+                )
+            )
         return cls(await res.first())
 
 
 class Registration:
-    table = sa.Table("registrations", metadata,
-                     sa.Column("username", sa.String(32), sa.ForeignKey("users.username", ondelete="CASCADE"), nullable=False),
-                     sa.Column("location", sa.String(1024), nullable=False),
-                     sa.Column("oconnection_id", sa.String(1024), nullable=False),
-                     sa.Column("expires", sa.TIMESTAMP, nullable=False),
-                     sa.UniqueConstraint("username", "location", "oconnection_id", name="uniq_registrations")
-                     )
+    table = sa.Table(
+        "registrations",
+        metadata,
+        sa.Column(
+            "username",
+            sa.String(32),
+            sa.ForeignKey("users.username", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("location", sa.String(1024), nullable=False),
+        sa.Column("oconnection_id", sa.String(1024), nullable=False),
+        sa.Column("expires", sa.TIMESTAMP, nullable=False),
+        sa.UniqueConstraint(
+            "username", "location", "oconnection_id", name="uniq_registrations"
+        ),
+    )
 
     FIELDS_PLAIN = ("username", "location", "oconnection_id", "expires")
 
@@ -91,7 +138,9 @@ class Registration:
     @classmethod
     async def load_locations_for(cls, user: User, dialed_number, db_connection):
         result = []
-        res = await db_connection.execute(cls.table.select().where(cls.table.c.username == user.username))
+        res = await db_connection.execute(
+            cls.table.select().where(cls.table.c.username == user.username)
+        )
         return [cls(row, user=user, dialed_number=dialed_number) async for row in res]
 
     @property
@@ -101,29 +150,44 @@ class Registration:
         # the location field has the format sip/sip:<user>@<ip>:<port>;<param>=<val>,...
         # for a trunk we want to exchange user by the actually dialed number
 
-        return self.location.replace(f"{self._user.username}@", f"{self._dialed_number}@", 1)
+        return self.location.replace(
+            f"{self._user.username}@", f"{self._dialed_number}@", 1
+        )
 
 
 class ActiveCall:
-    table = sa.Table("active_calls", metadata,
-                     sa.Column("username", sa.String(32), sa.ForeignKey("users.username", ondelete="CASCADE"), nullable=False),
-                     sa.Column("x_eventphone_id", sa.String(64), nullable=False),
-                     )
+    table = sa.Table(
+        "active_calls",
+        metadata,
+        sa.Column(
+            "username",
+            sa.String(32),
+            sa.ForeignKey("users.username", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("x_eventphone_id", sa.String(64), nullable=False),
+    )
 
     @classmethod
     async def is_active_call(cls, username, x_eventphone_id, db_connection):
-        return (await db_connection.scalar(cls.table.count()
-                                                    .where(cls.table.c.username == username)
-                                                    .where(cls.table.c.x_eventphone_id == x_eventphone_id))) > 0
+        return (
+            await db_connection.scalar(
+                cls.table.count()
+                .where(cls.table.c.username == username)
+                .where(cls.table.c.x_eventphone_id == x_eventphone_id)
+            )
+        ) > 0
 
 
 class Yate:
-    table = sa.Table("Yate", metadata,
-                     sa.Column("id", sa.Integer, primary_key=True),
-                     sa.Column("hostname", sa.String(256), nullable=False),
-                     sa.Column("guru3_identifier", sa.String(32), nullable=False),
-                     sa.Column("voip_listener", sa.String(256), nullable=False)
-                     )
+    table = sa.Table(
+        "Yate",
+        metadata,
+        sa.Column("id", sa.Integer, primary_key=True),
+        sa.Column("hostname", sa.String(256), nullable=False),
+        sa.Column("guru3_identifier", sa.String(32), nullable=False),
+        sa.Column("voip_listener", sa.String(256), nullable=False),
+    )
     FIELDS_PLAIN = ("id", "hostname", "guru3_identifier", "voip_listener")
 
     def __init__(self, db_row):
@@ -176,34 +240,75 @@ class RoutingTreeNode:
 
 
 class Extension(RoutingTreeNode):
-    table = sa.Table("Extension", metadata,
-                     sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-                     sa.Column("yate_id", sa.Integer, sa.ForeignKey("Yate.id")),
-                     sa.Column("extension", sa.String(32), nullable=False, unique=True),
-                     sa.Column("name", sa.String(64)),
-                     sa.Column("short_name", sa.String(8)),
-                     sa.Column("type", ENUM("SIMPLE", "MULTIRING", "GROUP", "EXTERNAL", "TRUNK", name="extension_type"),
-                               nullable=False),
-                     sa.Column("outgoing_extension", sa.String(32)),
-                     sa.Column("outgoing_name", sa.String(64)),
-                     sa.Column("dialout_allowed", sa.Boolean, server_default="0"),
-                     sa.Column("ringback", sa.String(128)),
-                     sa.Column("forwarding_mode", ENUM("DISABLED", "ENABLED", "ON_BUSY", "ON_UNAVAILABLE",
-                                                       name="forwarding_mode"),
-                               nullable=False),
-                     sa.Column("forwarding_delay", sa.Integer),
-                     sa.Column("forwarding_extension_id", sa.Integer, sa.ForeignKey("Extension.id",
-                                                                                    ondelete="SET NULL")),
-                     sa.Column("lang", sa.String(6), nullable=False),
-                     sa.CheckConstraint("(forwarding_extension_id IS NOT NULL) OR (forwarding_mode = 'DISABLED')",
-                                        name="fwd_correct"),
-                     sa.CheckConstraint("(forwarding_mode != 'ENABLED') OR (forwarding_delay IS NOT NULL)",
-                                        name="fwd_delay_correct"),
-                     sa.CheckConstraint("(yate_id IS NOT NULL) OR (type != 'SIMPLE' AND type != 'MULTIRING')",
-                                        name="yate_id_not_null_for_direct_ring"),
+    table = sa.Table(
+        "Extension",
+        metadata,
+        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column("yate_id", sa.Integer, sa.ForeignKey("Yate.id")),
+        sa.Column("extension", sa.String(32), nullable=False, unique=True),
+        sa.Column("name", sa.String(64)),
+        sa.Column("short_name", sa.String(8)),
+        sa.Column(
+            "type",
+            ENUM(
+                "SIMPLE",
+                "MULTIRING",
+                "GROUP",
+                "EXTERNAL",
+                "TRUNK",
+                name="extension_type",
+            ),
+            nullable=False,
+        ),
+        sa.Column("outgoing_extension", sa.String(32)),
+        sa.Column("outgoing_name", sa.String(64)),
+        sa.Column("dialout_allowed", sa.Boolean, server_default="0"),
+        sa.Column("ringback", sa.String(128)),
+        sa.Column(
+            "forwarding_mode",
+            ENUM(
+                "DISABLED",
+                "ENABLED",
+                "ON_BUSY",
+                "ON_UNAVAILABLE",
+                name="forwarding_mode",
+            ),
+            nullable=False,
+        ),
+        sa.Column("forwarding_delay", sa.Integer),
+        sa.Column(
+            "forwarding_extension_id",
+            sa.Integer,
+            sa.ForeignKey("Extension.id", ondelete="SET NULL"),
+        ),
+        sa.Column("lang", sa.String(6), nullable=False),
+        sa.CheckConstraint(
+            "(forwarding_extension_id IS NOT NULL) OR (forwarding_mode = 'DISABLED')",
+            name="fwd_correct",
+        ),
+        sa.CheckConstraint(
+            "(forwarding_mode != 'ENABLED') OR (forwarding_delay IS NOT NULL)",
+            name="fwd_delay_correct",
+        ),
+        sa.CheckConstraint(
+            "(yate_id IS NOT NULL) OR (type != 'SIMPLE' AND type != 'MULTIRING')",
+            name="yate_id_not_null_for_direct_ring",
+        ),
     )
-    FIELDS_PLAIN = ("id", "yate_id", "extension", "name", "short_name", "outgoing_extension", "outgoing_name",
-                    "dialout_allowed", "ringback", "forwarding_delay", "forwarding_extension_id", "lang")
+    FIELDS_PLAIN = (
+        "id",
+        "yate_id",
+        "extension",
+        "name",
+        "short_name",
+        "outgoing_extension",
+        "outgoing_name",
+        "dialout_allowed",
+        "ringback",
+        "forwarding_delay",
+        "forwarding_extension_id",
+        "lang",
+    )
     FIELDS_TRANSFORM = (
         ("type", lambda x: Extension.Type[x]),
         ("forwarding_mode", lambda x: Extension.ForwardingMode[x]),
@@ -239,7 +344,9 @@ class Extension(RoutingTreeNode):
         return data
 
     def __repr__(self):
-        return "<Extension {}, name={}, type={}>".format(self.extension, self.name, self.type)
+        return "<Extension {}, name={}, type={}>".format(
+            self.extension, self.name, self.type
+        )
 
     @classmethod
     def create_external(cls, extension, external_name=None):
@@ -261,7 +368,7 @@ class Extension(RoutingTreeNode):
             "type": "EXTERNAL",
             "forwarding_mode": "DISABLED",
         }
-        return cls(namedtuple('Ext_row', params.keys())(*params.values()))
+        return cls(namedtuple("Ext_row", params.keys())(*params.values()))
 
     @classmethod
     def create_unknown(cls, extension):
@@ -281,44 +388,61 @@ class Extension(RoutingTreeNode):
             "type": "SIMPLE",
             "forwarding_mode": "DISABLED",
         }
-        return cls(namedtuple('Ext_row', params.keys())(*params.values()))
+        return cls(namedtuple("Ext_row", params.keys())(*params.values()))
 
     @classmethod
     async def load_extension(cls, extension, db_connection):
-        res = await db_connection.execute(cls.table.select().where(cls.table.c.extension == extension))
+        res = await db_connection.execute(
+            cls.table.select().where(cls.table.c.extension == extension)
+        )
         if res.rowcount == 0:
-            raise DoesNotExist("No extension \"{}\" found".format(extension))
+            raise DoesNotExist('No extension "{}" found'.format(extension))
         return cls(await res.first())
 
     @classmethod
     async def load_trunk_extension(cls, dialed_number, db_connection):
-        res = await db_connection.execute(cls.table.select()
-                                                   .where(
-             bindparam('dialed_number', dialed_number).startswith(cls.table.c.extension)
-                                                   )
-                                                   .where(cls.table.c.type == "TRUNK"))
+        res = await db_connection.execute(
+            cls.table.select()
+            .where(
+                bindparam("dialed_number", dialed_number).startswith(
+                    cls.table.c.extension
+                )
+            )
+            .where(cls.table.c.type == "TRUNK")
+        )
         if res.rowcount == 0:
-            raise DoesNotExist("No trunk for \"{}\" found".format(dialed_number))
+            raise DoesNotExist('No trunk for "{}" found'.format(dialed_number))
         elif res.rowcount > 1:
-            raise DoesNotExist("Trunk misconfiguration lead to multiple results for {}".format(dialed_number))
+            raise DoesNotExist(
+                "Trunk misconfiguration lead to multiple results for {}".format(
+                    dialed_number
+                )
+            )
         return cls(await res.first())
 
     async def load_forwarding_extension(self, db_connection):
         if self.forwarding_extension_id is None:
             raise DoesNotExist("This extension has no forwarding extension")
-        res = await db_connection.execute(self.table.select().where(self.table.c.id == self.forwarding_extension_id))
+        res = await db_connection.execute(
+            self.table.select().where(self.table.c.id == self.forwarding_extension_id)
+        )
         # this always exists and is unique by db constraints
         self.forwarding_extension = Extension(await res.first())
         if self.tree_identifier is not None:
-            self.forwarding_extension.tree_identifier = self.tree_identifier + "-" + str(self.forwarding_extension.id)
+            self.forwarding_extension.tree_identifier = (
+                self.tree_identifier + "-" + str(self.forwarding_extension.id)
+            )
 
     async def populate_fork_ranks(self, db_connection):
         result = await db_connection.execute(
-              sa.select([ForkRank.table, ForkRank.member_table, Extension.table], use_labels=True)
-                .where(ForkRank.table.c.extension_id == self.id)
-                .where(ForkRank.member_table.c.extension_id == Extension.table.c.id)
-                .where(ForkRank.table.c.id == ForkRank.member_table.c.forkrank_id)
-                .order_by(ForkRank.table.c.index)
+            sa.select(
+                [ForkRank.table, ForkRank.member_table, Extension.table],
+                use_labels=True,
+            )
+            .where(ForkRank.table.c.extension_id == self.id)
+            .where(ForkRank.member_table.c.extension_id == Extension.table.c.id)
+            .where(ForkRank.table.c.id == ForkRank.member_table.c.forkrank_id)
+            .order_by(ForkRank.table.c.index)
         )
         self.fork_ranks = []
         current_rank_id = None
@@ -328,18 +452,27 @@ class Extension(RoutingTreeNode):
                 current_rank_id = row.ForkRank_id
                 current_rank = ForkRank(row, prefix="ForkRank_")
                 if self.tree_identifier is not None:
-                    current_rank.tree_identifier = self.tree_identifier + "-fr" + str(current_rank.id)
+                    current_rank.tree_identifier = (
+                        self.tree_identifier + "-fr" + str(current_rank.id)
+                    )
                 self.fork_ranks.append(current_rank)
-            member = ForkRank.Member(ForkRank.RankMemberType[row.ForkRankMember_rankmember_type],
-                                     row.ForkRankMember_active,
-                                     Extension(row, prefix="Extension_"))
+            member = ForkRank.Member(
+                ForkRank.RankMemberType[row.ForkRankMember_rankmember_type],
+                row.ForkRankMember_active,
+                Extension(row, prefix="Extension_"),
+            )
             if self.tree_identifier is not None:
-                member.extension.tree_identifier = current_rank.tree_identifier + "-" + str(member.extension.id)
+                member.extension.tree_identifier = (
+                    current_rank.tree_identifier + "-" + str(member.extension.id)
+                )
             current_rank.members.append(member)
 
     @property
     def immediate_forward(self):
-        return self.forwarding_mode == Extension.ForwardingMode.ENABLED and self.forwarding_delay == 0
+        return (
+            self.forwarding_mode == Extension.ForwardingMode.ENABLED
+            and self.forwarding_delay == 0
+        )
 
     @property
     def has_active_group_members(self):
@@ -350,29 +483,54 @@ class Extension(RoutingTreeNode):
 
 
 class ForkRank(RoutingTreeNode):
-    table = sa.Table("ForkRank", metadata,
-                     sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-                     sa.Column("extension_id", sa.Integer, sa.ForeignKey("Extension.id", ondelete="CASCADE"),
-                               nullable=False, index=True),
-                     sa.Column("index", sa.Integer, nullable=False),
-                     sa.Column("mode", ENUM("DEFAULT", "NEXT", "DROP", name="fork_rank_mode"), nullable=False),
-                     sa.Column("delay", sa.Integer),
-                     sa.CheckConstraint("(mode = 'DEFAULT') OR (delay IS NOT NULL)", name="delay_correct"),
-                     )
-    FIELDS_PLAIN = ("id", "extension_id", "index", "delay")
-    FIELDS_TRANSFORM = (
-        ("mode", lambda x: ForkRank.Mode[x]),
+    table = sa.Table(
+        "ForkRank",
+        metadata,
+        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column(
+            "extension_id",
+            sa.Integer,
+            sa.ForeignKey("Extension.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column("index", sa.Integer, nullable=False),
+        sa.Column(
+            "mode",
+            ENUM("DEFAULT", "NEXT", "DROP", name="fork_rank_mode"),
+            nullable=False,
+        ),
+        sa.Column("delay", sa.Integer),
+        sa.CheckConstraint(
+            "(mode = 'DEFAULT') OR (delay IS NOT NULL)", name="delay_correct"
+        ),
     )
-    member_table = sa.Table("ForkRankMember", metadata,
-                            sa.Column("forkrank_id", sa.Integer, sa.ForeignKey("ForkRank.id", ondelete="CASCADE"),
-                                      nullable=False, index=True),
-                            sa.Column("extension_id", sa.Integer, sa.ForeignKey("Extension.id", ondelete="CASCADE"),
-                                      nullable=False),
-                            sa.Column("rankmember_type", ENUM("DEFAULT", "AUXILIARY", "PERSISTENT",
-                                                              name="fork_rankmember_type"), nullable=False),
-                            sa.Column("active", sa.Boolean, nullable=False),
-                            sa.UniqueConstraint("forkrank_id", "extension_id", name="uniq1")
-                            )
+    FIELDS_PLAIN = ("id", "extension_id", "index", "delay")
+    FIELDS_TRANSFORM = (("mode", lambda x: ForkRank.Mode[x]),)
+    member_table = sa.Table(
+        "ForkRankMember",
+        metadata,
+        sa.Column(
+            "forkrank_id",
+            sa.Integer,
+            sa.ForeignKey("ForkRank.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column(
+            "extension_id",
+            sa.Integer,
+            sa.ForeignKey("Extension.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "rankmember_type",
+            ENUM("DEFAULT", "AUXILIARY", "PERSISTENT", name="fork_rankmember_type"),
+            nullable=False,
+        ),
+        sa.Column("active", sa.Boolean, nullable=False),
+        sa.UniqueConstraint("forkrank_id", "extension_id", name="uniq1"),
+    )
 
     class Mode(Enum):
         DEFAULT = 0
@@ -412,8 +570,9 @@ class ForkRank(RoutingTreeNode):
         self.members = []
 
     def __repr__(self):
-        return "<ForkRank id={}, extension_id={}, index={}, mode={}, delay={}>"\
-            .format(self.id, self.extension_id, self.mode, self.index, self.mode, self.delay)
+        return "<ForkRank id={}, extension_id={}, index={}, mode={}, delay={}>".format(
+            self.id, self.extension_id, self.mode, self.index, self.mode, self.delay
+        )
 
     def serialize(self):
         data = super().serialize()
@@ -430,15 +589,25 @@ class ForkRank(RoutingTreeNode):
 
 async def initialize_database(connection, stage2_only=False, stage1_only=False):
     if not stage2_only:
-        await connection.execute("CREATE TYPE extension_type AS ENUM('SIMPLE', 'MULTIRING', 'GROUP', 'EXTERNAL', "
-                                 "'TRUNK')")
-        await connection.execute("CREATE TYPE forwarding_mode AS ENUM('DISABLED', 'ENABLED', 'ON_BUSY', "
-                                 "'ON_UNAVAILABLE')")
-        await connection.execute("CREATE TYPE fork_rank_mode AS ENUM('DEFAULT', 'NEXT', 'DROP')")
-        await connection.execute("CREATE TYPE fork_rankmember_type AS ENUM('DEFAULT', 'AUXILIARY', 'PERSISTENT')")
+        await connection.execute(
+            "CREATE TYPE extension_type AS ENUM('SIMPLE', 'MULTIRING', 'GROUP', 'EXTERNAL', "
+            "'TRUNK')"
+        )
+        await connection.execute(
+            "CREATE TYPE forwarding_mode AS ENUM('DISABLED', 'ENABLED', 'ON_BUSY', "
+            "'ON_UNAVAILABLE')"
+        )
+        await connection.execute(
+            "CREATE TYPE fork_rank_mode AS ENUM('DEFAULT', 'NEXT', 'DROP')"
+        )
+        await connection.execute(
+            "CREATE TYPE fork_rankmember_type AS ENUM('DEFAULT', 'AUXILIARY', 'PERSISTENT')"
+        )
 
     if not stage1_only:
-        await connection.execute("CREATE TYPE dect_displaymode AS ENUM('NUMBER', 'NUMBER_AND_NAME', 'NAME')")
+        await connection.execute(
+            "CREATE TYPE dect_displaymode AS ENUM('NUMBER', 'NUMBER_AND_NAME', 'NAME')"
+        )
 
     if not stage2_only:
         await connection.execute(CreateTable(Yate.table))
@@ -454,10 +623,10 @@ async def initialize_database(connection, stage2_only=False, stage1_only=False):
 
 async def regenerate_database_objects(connection, stage2_only=False, stage1_only=False):
     if not stage2_only:
-        await connection.execute("DROP TABLE IF EXISTS \"Yate\" CASCADE")
-        await connection.execute("DROP TABLE IF EXISTS \"Extension\" CASCADE")
-        await connection.execute("DROP TABLE IF EXISTS \"ForkRank\" CASCADE")
-        await connection.execute("DROP TABLE IF EXISTS \"ForkRankMember\" CASCADE")
+        await connection.execute('DROP TABLE IF EXISTS "Yate" CASCADE')
+        await connection.execute('DROP TABLE IF EXISTS "Extension" CASCADE')
+        await connection.execute('DROP TABLE IF EXISTS "ForkRank" CASCADE')
+        await connection.execute('DROP TABLE IF EXISTS "ForkRankMember" CASCADE')
 
     if not stage1_only:
         await connection.execute("DROP TABLE IF EXISTS users CASCADE")
@@ -488,11 +657,19 @@ async def amain():
 
     import ywsd.settings
 
-    parser = argparse.ArgumentParser(description='Yate Routing Engine')
-    parser.add_argument("--config", type=str, help="Config file to use.", default="routing_engine.yaml")
-    parser.add_argument("--stage2", help="Only setup tables for stage2 routing", action="store_true")
-    parser.add_argument("--stage1", help="Only setup tables for stage1 routing", action="store_true")
-    parser.add_argument("--regenerate", help="Drop tables if they already exist", action="store_true")
+    parser = argparse.ArgumentParser(description="Yate Routing Engine")
+    parser.add_argument(
+        "--config", type=str, help="Config file to use.", default="routing_engine.yaml"
+    )
+    parser.add_argument(
+        "--stage2", help="Only setup tables for stage2 routing", action="store_true"
+    )
+    parser.add_argument(
+        "--stage1", help="Only setup tables for stage1 routing", action="store_true"
+    )
+    parser.add_argument(
+        "--regenerate", help="Drop tables if they already exist", action="store_true"
+    )
 
     args = parser.parse_args()
     settings = ywsd.settings.Settings(args.config)

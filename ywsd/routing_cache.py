@@ -80,5 +80,8 @@ class RedisRoutingCache(RoutingCacheBase):
 
     async def update(self, results: Dict[str, IntermediateRoutingResult]):
         for key, routing_result in results.items():
-            await self._redis.set(key, json.dumps(routing_result.serialize()), expire=self._object_lifetime)
-
+            await self._redis.set(
+                key,
+                json.dumps(routing_result.serialize()),
+                expire=self._object_lifetime,
+            )

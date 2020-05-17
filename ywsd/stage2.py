@@ -23,7 +23,7 @@ def get_headers(msg: Message):
 
 
 class RoutingTask:
-    def __init__(self, yate: 'ywsd.engine.YateRoutingEngine', message: Message):
+    def __init__(self, yate: "ywsd.engine.YateRoutingEngine", message: Message):
         self._yate = yate
         self._message = message
 
@@ -49,7 +49,9 @@ class RoutingTask:
                 except DoesNotExist:
                     return False, False
 
-            locations = await Registration.load_locations_for(target, called, db_connection)
+            locations = await Registration.load_locations_for(
+                target, called, db_connection
+            )
             if not locations:
                 self._message.params["error"] = "offline"
                 self._message.params["reason"] = "offline"
@@ -58,10 +60,14 @@ class RoutingTask:
             headers = get_headers(self._message)
 
             # Check if this call should be dropped
-            if (headers["X-No-Call-Wait"] == "1" or not target.call_waiting) and target.inuse > 0:
+            if (
+                headers["X-No-Call-Wait"] == "1" or not target.call_waiting
+            ) and target.inuse > 0:
                 self._message.params["error"] = "busy"
                 return False, True
-            if await ActiveCall.is_active_call("called", headers["X-Eventphone-Id"], db_connection):
+            if await ActiveCall.is_active_call(
+                "called", headers["X-Eventphone-Id"], db_connection
+            ):
                 self._message.params["error"] = "busy"
                 return False, True
 
@@ -73,7 +79,9 @@ class RoutingTask:
                 self._message.return_value = "fork"
                 for i, location in enumerate(locations, start=1):
                     self._message.params["callto.{}".format(i)] = location.call_target
-                    self._message.params["callto.{}.oconnection_id".format(i)] = location.oconnection_id
+                    self._message.params[
+                        "callto.{}.oconnection_id".format(i)
+                    ] = location.oconnection_id
 
             self.populate_additional_message_parameters(headers)
             return True, True
@@ -92,9 +100,15 @@ class RoutingTask:
 
         success, handled = await self._calculate_stage2_routing(caller, called)
         if success:
-            logging.debug("Routing successful. Target is {}".format(self._message.return_value))
+            logging.debug(
+                "Routing successful. Target is {}".format(self._message.return_value)
+            )
         elif handled:
-            logging.debug("Routing not successful. Error is {}.".format(self._message.params["error"]))
+            logging.debug(
+                "Routing not successful. Error is {}.".format(
+                    self._message.params["error"]
+                )
+            )
         else:
             logging.debug("Routing not successful, noroute, pass message on")
 

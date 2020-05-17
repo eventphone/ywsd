@@ -33,9 +33,7 @@ class YateRoutingEngine(YateAsync):
 
         if self._settings.WEB_INTERFACE is not None:
             self._web_app = web.Application()
-            self._web_app.add_routes([
-                web.get("/stage1", self._web_stage1_handler)
-            ])
+            self._web_app.add_routes([web.get("/stage1", self._web_stage1_handler)])
             self._app_runner = web.AppRunner(self._web_app)
         else:
             self._web_app = None
@@ -70,11 +68,15 @@ class YateRoutingEngine(YateAsync):
         logging.info("Initializing main application")
         self._shutdown_future = asyncio.get_event_loop().create_future()
         try:
-            asyncio.get_event_loop().add_signal_handler(signal.SIGINT, lambda: self._shutdown_future.set_result(True))
+            asyncio.get_event_loop().add_signal_handler(
+                signal.SIGINT, lambda: self._shutdown_future.set_result(True)
+            )
         except NotImplementedError:
             pass  # Ignore if not implemented. Means this program is running in windows.
         logging.info("Initializing routing cache")
-        self._routing_cache = class_from_dotted_string(self.settings.CACHE_IMPLEMENTATION)(self, self.settings)
+        self._routing_cache = class_from_dotted_string(
+            self.settings.CACHE_IMPLEMENTATION
+        )(self, self.settings)
         await self._routing_cache.init()
 
         logging.info("Initializing database engine")
@@ -85,9 +87,11 @@ class YateRoutingEngine(YateAsync):
                 self._yates_dict = await Yate.load_yates_dict(db_connection)
 
             logging.info("Initializing stage2 database engine")
-            async with aiopg.sa.create_engine(**self._settings.STAGE2_DB_CONFIG) as stage2_db_engine:
+            async with aiopg.sa.create_engine(
+                **self._settings.STAGE2_DB_CONFIG
+            ) as stage2_db_engine:
                 self._stage2_db_engine = stage2_db_engine
-                
+
                 # fire up http server if requested
                 if self._web_app is not None:
                     bind = self._settings.WEB_INTERFACE.get("bind_address")
@@ -95,11 +99,17 @@ class YateRoutingEngine(YateAsync):
                     await self._app_runner.setup()
                     site = web.TCPSite(self._app_runner, bind, port)
                     await site.start()
-                    logging.info("Webserver ready. Waiting for requests on {}:{}.".format(bind, port))
+                    logging.info(
+                        "Webserver ready. Waiting for requests on {}:{}.".format(
+                            bind, port
+                        )
+                    )
 
                 if not self._web_only:
                     logging.info("Registering for routing messages")
-                    if not await self.register_message_handler_async("call.route", self._call_route_handler, 90):
+                    if not await self.register_message_handler_async(
+                        "call.route", self._call_route_handler, 90
+                    ):
                         logging.error("Cannot register for call.route. Terminating...")
                         return
 
@@ -118,7 +128,11 @@ class YateRoutingEngine(YateAsync):
         if called is None or called == "":
             return False
         if called.isdigit():
-            if msg.params.get("connection_id", "") == self.settings.INTERNAL_YATE_LISTENER or stage2_active == "1":
+            if (
+                msg.params.get("connection_id", "")
+                == self.settings.INTERNAL_YATE_LISTENER
+                or stage2_active == "1"
+            ):
                 task = stage2.RoutingTask(self, msg)
             else:
                 task = stage1.RoutingTask(self, msg)
@@ -152,7 +166,9 @@ class YateRoutingEngine(YateAsync):
         caller = params.get("caller")
 
         if any((caller is None, called is None)):
-            return web.Response(status=400, text="Provide at least <caller> and <called>")
+            return web.Response(
+                status=400, text="Provide at least <caller> and <called>"
+            )
 
         # calculate routing tree and results
         routing_tree = None
@@ -164,15 +180,22 @@ class YateRoutingEngine(YateAsync):
         try:
             async with self.routing_db_engine.acquire() as db_connection:
                 try:
-                    caller_extension = await Extension.load_extension(caller, db_connection)
+                    caller_extension = await Extension.load_extension(
+                        caller, db_connection
+                    )
                 except DoesNotExist:
                     caller_extension = Extension.create_external(caller)
-                caller_params = stage1.RoutingTask.calculate_source_parameters(caller_extension)
-                routing_tree = RoutingTree(caller_extension, called, caller_params, self.settings)
+                caller_params = stage1.RoutingTask.calculate_source_parameters(
+                    caller_extension
+                )
+                routing_tree = RoutingTree(
+                    caller_extension, called, caller_params, self.settings
+                )
                 await routing_tree.discover_tree(db_connection)
 
-            routing_result, routing_cache_entries = routing_tree.calculate_routing(self.settings.LOCAL_YATE_ID,
-                                                                                   self.yates_dict)
+            routing_result, routing_cache_entries = routing_tree.calculate_routing(
+                self.settings.LOCAL_YATE_ID, self.yates_dict
+            )
             all_routing_results = routing_tree.all_routing_results
             routing_status = "OK"
         except RoutingError as e:
@@ -183,13 +206,20 @@ class YateRoutingEngine(YateAsync):
             backtrace = traceback.format_exc()
             routing_status = "ERROR"
             all_routing_results = {}
-            routing_status_details = "Unexpected Exception while routing:\n{}:Backtrace:\n{}".format(e, backtrace)
+            routing_status_details = "Unexpected Exception while routing:\n{}:Backtrace:\n{}".format(
+                e, backtrace
+            )
 
         json_response_data = {
             "routing_tree": routing_tree.serialized_tree(),
-            "main_routing_result": routing_result.serialize() if routing_result is not None else None,
-            "all_routing_results": {key: result.serialize() for key, result in all_routing_results.items() if
-                                    result.target.target in routing_cache_entries},
+            "main_routing_result": routing_result.serialize()
+            if routing_result is not None
+            else None,
+            "all_routing_results": {
+                key: result.serialize()
+                for key, result in all_routing_results.items()
+                if result.target.target in routing_cache_entries
+            },
             "routing_status": routing_status,
             "routing_status_details": routing_status_details,
         }
@@ -197,11 +227,17 @@ class YateRoutingEngine(YateAsync):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Yate Routing Engine')
-    parser.add_argument("--config", type=str, help="Config file to use.", default="routing_engine.yaml")
+    parser = argparse.ArgumentParser(description="Yate Routing Engine")
+    parser.add_argument(
+        "--config", type=str, help="Config file to use.", default="routing_engine.yaml"
+    )
     parser.add_argument("--verbose", help="Print out debug logs.", action="store_true")
-    parser.add_argument("--web-only", help="Only start the webserver. Do not connect to yate", dest="web_only",
-                        action="store_true")
+    parser.add_argument(
+        "--web-only",
+        help="Only start the webserver. Do not connect to yate",
+        dest="web_only",
+        action="store_true",
+    )
 
     args = parser.parse_args()
     settings = Settings(args.config)
@@ -222,7 +258,9 @@ def main():
     logging.debug("Debug logging enabled.")
 
     yate_connection = settings.YATE_CONNECTION
-    app = YateRoutingEngine(settings=settings, web_only=args.web_only, **yate_connection)
+    app = YateRoutingEngine(
+        settings=settings, web_only=args.web_only, **yate_connection
+    )
     app.run()
 
 

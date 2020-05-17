@@ -10,5 +10,3 @@ class Settings:
 
     def __getattr__(self, item):
         return self.config.get(item)
-
-

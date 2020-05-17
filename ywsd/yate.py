@@ -12,12 +12,16 @@ def encode_routing_result(msg: Message, result: IntermediateRoutingResult):
         msg.return_value = result.target.target
     else:
         msg.return_value = "fork"
-        fork_parameters = calltargets_to_callfork_params(result.fork_targets, global_parameters)
+        fork_parameters = calltargets_to_callfork_params(
+            result.fork_targets, global_parameters
+        )
         msg.params.update(fork_parameters)
     return msg
 
 
-def calltargets_to_callfork_params(call_targets: List['CallTarget'], global_params: dict):
+def calltargets_to_callfork_params(
+    call_targets: List["CallTarget"], global_params: dict
+):
     index = 1
     params = {}
     for target in call_targets:
