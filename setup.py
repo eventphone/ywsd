@@ -8,7 +8,7 @@ with open(os.path.join(this_dir, "README.md"), "r") as f:
 
 setup(
     name="ywsd",
-    version="0.9.15",
+    version="0.9.16",
     packages=["ywsd"],
     url="https://gitlab.rc5.de/eventphone/ywsd",
     license="AGPLv3+",
@@ -23,7 +23,13 @@ setup(
         "Programming Language :: Python :: 3.8",
         "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     ],
-    install_requires=["aiopg", "aiohttp", "python-yate", "pyyaml", "sqlalchemy",],
+    install_requires=[
+        "aiopg",
+        "aiohttp",
+        "python-yate",
+        "pyyaml",
+        "sqlalchemy",
+    ],
     entry_points={
         "console_scripts": [
             "ywsd_init_db=ywsd.objects:main",

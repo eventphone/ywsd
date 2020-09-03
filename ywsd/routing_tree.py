@@ -534,7 +534,9 @@ class YateRoutingGenerationVisitor:
                 "sip/sip:{}@{}".format(
                     node.extension, self._yates_dict[node.yate_id].hostname
                 ),
-                {"oconnection_id": self._yates_dict[node.yate_id].voip_listener,},
+                {
+                    "oconnection_id": self._yates_dict[node.yate_id].voip_listener,
+                },
             )
 
     def generate_trunk_routing(self, trunk: Extension, dialed_number: str):
@@ -555,7 +557,9 @@ class YateRoutingGenerationVisitor:
                     "sip/sip:{}@{}".format(
                         dialed_number, self._yates_dict[trunk.yate_id].hostname
                     ),
-                    {"oconnection_id": self._yates_dict[trunk.yate_id].voip_listener,},
+                    {
+                        "oconnection_id": self._yates_dict[trunk.yate_id].voip_listener,
+                    },
                 )
             )
 

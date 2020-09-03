@@ -206,8 +206,10 @@ class YateRoutingEngine(YateAsync):
             backtrace = traceback.format_exc()
             routing_status = "ERROR"
             all_routing_results = {}
-            routing_status_details = "Unexpected Exception while routing:\n{}:Backtrace:\n{}".format(
-                e, backtrace
+            routing_status_details = (
+                "Unexpected Exception while routing:\n{}:Backtrace:\n{}".format(
+                    e, backtrace
+                )
             )
 
         json_response_data = {
@@ -218,7 +220,7 @@ class YateRoutingEngine(YateAsync):
             "all_routing_results": {
                 key: result.serialize()
                 for key, result in all_routing_results.items()
-                if result.target.target in routing_cache_entries
+                if result.is_valid and result.target.target in routing_cache_entries
             },
             "routing_status": routing_status,
             "routing_status_details": routing_status_details,
