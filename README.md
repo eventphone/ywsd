@@ -4,7 +4,7 @@ Ywsd is a telephone number routing engine for the [Yate](http://Yate.ro/) teleph
 telephone networks. It provides the routing backend for common PBX features such as group calls (including delayed
 ringing and hunting groups), (conditional) call forwarding, caller verification or caller masquerading. The main design
 goal of this backend to provide as much flexibility for call routing as possible while ensuring a certain set of
-consistency conditions. In order to split the phone network into multiple failure domains or also allow for load
+consistency conditions. To split the phone network into multiple failure domains or also allow for load
 balancing, Ywsd is designed to support a PBX that consists of multiple Yate servers. Routing information is (globally)
 stored in a PostgreSQL database that enforces consistency of basic participant properties and the links between
 extensions (groups, forwards, etc…).
@@ -18,7 +18,7 @@ If you don't want to know the details, just [jump to the setup guide](#Getting-s
 
 ## Basic Architecture
 
-Ywsd based routing in split into two stages. Routing stage 1 calculates all extensions that are involved in a call
+Ywsd based routing is split into two stages. Routing stage 1 calculates all extensions that are involved in a call
 as well as their relation (groups, forwards, delays, etc…). It does not resolve the call to SIP addresses of the
 individual participant but only goes so far as to know on which SIP server the participant should be registered and
 will route calls to this SIP server.
@@ -32,7 +32,7 @@ Routing is illustrated as a tree in ywsd. An extension is a leaf in such a tree 
 That is, it corresponds to a physical extension, has no forwards or other devices that should ring when a call
 is routed to it. Otherwise, an extension is an inner node. This is most visible for call groups. They have all
 call group members as children in the routing tree and don't correspond to a device themselves. The routing, however,
-also supports a mixed mode (called multi ring) where an extension has a physical device and behaves like a call group at
+also supports a mixed-mode (called multi-ring) where an extension has a physical device and behaves like a call group at
 the same time. This is used to, e.g., configure desktop SIP phone to also ring when your DECT is ringing.
 
 Extensions can also become inner tree nodes if they forward to another extension. This can also lead to a situation
@@ -40,9 +40,9 @@ where this extension won't be called anymore (immediate forward) or will be call
 forward will be activated (delayed forward). The routing engine also supports forward on busy or forward on unavailable.
 
 One might think that routing can and should rather be represented as DAG than as tree. In particular, if two nested
-groups have the same member, shouldn't those be merged?. Unfortunately, call routing has an unpredictable timing
-behavior. Depending on hunt group or delayed ring configuration it is not possible to consider all scenarios statically
-while routing as the final behavior can depend on which devices are currently active and/or busy. Thus, ywsd keeps the
+groups have the same member, shouldn't those be merged?. Unfortunately, call routing has unpredictable timing
+behaviour. Depending on hunt group or delayed ring configuration it is not possible to consider all scenarios statically
+while routing as the final behaviour can depend on which devices are currently active and/or busy. Thus, ywsd keeps the
 tree representation and has additional measures to ensure devices don't ring twice on the same call at runtime.
 
 ### Tree Discovery
@@ -58,7 +58,7 @@ The implementation of call groups follows closely Yate's CallFork module. A fork
 represents a set of extensions that is called at the same time. The ranks are ordered. Each rank can either extend
 the current call of the previous rank after a given time or replace all participants called in the previous rank(s).
 
-Consequently, inner tree nodes can link immediately to another extension (with forwards) or to a fork rank that
+Consequently, inner tree nodes can link immediately to another extension (with forwards) or a fork rank that
 (itself) then links to extensions. The following examples illustrate the shape of call routing trees.
 
 ![Simple group routing](docs/simple-group-routing.png)
@@ -71,7 +71,7 @@ and was thus discovered but will not be considered in the generated call.
 
 This is a more involved example of a routing tree that features groups with multiple and non-default fork ranks,
 nested groups and a call forward from user 1001 to 1006. It illustrates no particular use case but should rather
-serve as an example on how generic and complex routing trees might look like.
+serve as an example of how generic and complex routing trees might look like.
 
 ### Route Generation
 
@@ -85,7 +85,7 @@ to call. If the target is locally on the same Yate, it will just issue a `latero
 forward this to routing stage 2.
 
 If the child is again an inner node, the call target is symbolic and of the form `lateroute/stage1-<callid>-<treepath>`.
-In order to ensure consistency in the routing, all intermediate routing results will be cached after the initial routing
+To ensure consistency in the routing, all intermediate routing results will be cached after the initial routing
 was completely calculated. Once the call progresses, Yate's lateroute module will query the routing engine again for the
 symbolic names of the inner nodes. These requests will then be answered from the cache.
 
@@ -100,7 +100,7 @@ Stage 2 routing is relatively simple and dumb (compared to Stage 1). It is based
 table in the database. In addition to this, Yate's register module is used to maintain a list of currently registered
 SIP devices per extension in the registration table.
 
-Stage 2 routing is either triggered by a the flag *eventphone_stage2* in the `call.route` message (put there by
+Stage 2 routing is either triggered by the flag *eventphone_stage2* in the `call.route` message (put there by
 routing stage 1) or automatically triggered if a call is coming from a specific SIP listener. In our multi Yate PBX
 setup, we use one network with special SIP listeners that exchanges all calls between the different Yate instances
 of our PBX. Such calls from another Yate in our PBX where stage1-routed on their home Yate.
@@ -112,36 +112,36 @@ devices registered, one last simple and flat call fork with all the registered S
 
 In addition to this, stage2 uses the cdrbuild module to keep track of calls that are currently active at an extension.
 It tracks the number of calls currently active on a device as well as the callids (uuid4). Call id tracking is used to
-ensure that a single call does not lead to a device ringing twice on the same call. Duplicate call are filtered here.
+ensure that a single call does not lead to a device ringing twice on the same call. The duplicate call is filtered here.
 The number of active calls is used to signal busy if call waiting is deactivated for the extension. If call waiting is
 active, the extension will be called independent of whether the line is currently busy or not.
 
-So please note that stage2 needs a particular configuration of the `cdrbuild` and `register` module in Yate in order to
+So please note that stage2 needs a particular configuration of the `cdrbuild` and `register` module in Yate to
 work correctly. See instructions below.
 
 ## Getting started
 
 Ywsd uses a PostgeSQL database backend that is accessed via the asyncio aiopg module. As a consequence, a minimal test
-setup needs a postgres database and all python packages from requirements.txt installed. For production deployments,
-cached routing results should be stored in a redis instance. For development purposes, the simple python built-in
-dictionary based cache suffices.
+setup needs a Postgres database and all python packages from requirements.txt installed. For production deployments,
+cached routing results should be stored in a Redis instance. For development purposes, the simple python built-in
+dictionary-based cache suffices.
 
 Next, a `routing_engine.yaml` configuration file needs to be created. You can see the example file that ships with this
-repository to get a feeling how it could look like.
+repository to get a feeling of how it could look like.
 
 Once the configuration is complete, the database can be setup. Run `ywsd_init_db --config <your_config> --stage1` to
 bootstrap the stage1 routing database. Then run `ywsd_init_db --config <your_config> --stage2` to bootstrap the stage2
 routing database.
 
-In principle, your ywsd instance is now ready to go. In order to actually route something, for sure, the database
+In principle, your ywsd instance is now ready to go. To actually route something, for sure, the database
 needs to be populated with extensions.
 
-If you want to test ywsd without a running Yate, you may use the web server only mode. Start ywsd with
+If you want to test ywsd without a running Yate, you may use the webserver only mode. Start ywsd with
 ```
 ywsd_engine --config <your_config> --web-only
 ```
-Ywsd then starts without connecting to a Yate and just offers the web server on the configured interface/port. You can
-then ask for a sample routing and will get the results in json form. Depending on your test data, results can look
+Ywsd then starts without connecting to a Yate and just offers the webserver on the configured interface/port. You can
+then ask for a sample routing and will get the results in JSON form. Depending on your test data, results can look
 like this:
 ```
 curl http://localhost:9000/stage1\?caller\=2001\&called\=4711 | jq .
@@ -337,8 +337,8 @@ the register module is used to manage registrations of SIP clients in the stage2
 track of the calls on a certain SIP client and fills the stage2 database with information that is needed to provide
 deny-on-busy or filtering if a single call ends up twice with one SIP client.
 
-The following configuration is needed in these modules in order to provide the desired functionality. Please also note
-that Yate needs to be compiled and configured to use postgres database via the `pgsqldb` module.
+The following configuration is needed in these modules to provide the desired functionality. Please also note
+that Yate needs to be compiled and configured to use Postgres database via the `pgsqldb` module.
 
 Example register.conf:
 ```
@@ -380,7 +380,7 @@ cdr_initialize=UPDATE users SET inuse=inuse+1 WHERE username='${external}';INSER
 cdr_finalize=UPDATE users SET inuse=(CASE WHEN inuse>0 THEN inuse-1 ELSE 0 END) WHERE username='${external}';DELETE FROM active_calls WHERE username = '${external}' AND  x_eventphone_id = '${X-Eventphone-Id}' AND '${direction}' = 'outgoing';
 ```
 
-In order to enable duplicate call filtering, the parameters section of your cdrbuild.conf should have line for
+To enable duplicate call filtering, the parameters section of your cdrbuild.conf should have a line for
 X-Eventphone-Id like this
 ```
 [parameters]
@@ -391,6 +391,6 @@ X-Eventphone-Id=false
 
 There are currently no tests available for this project. There is a basic set of test data that was used during
 development and integration with Yate but no automatic testing was developed so far. Due to the nature of this
-project, it plans to add a suite of end-to-end functionality tests based on the web server exposure of routing
-results. An extensive set of unit tests for db loading or data structure generation is currently not planned
+project, it plans to add a suite of end-to-end functionality tests based on the webserver exposure of routing
+results. An extensive set of unit tests for DB loading or data structure generation is currently not planned
 but would be welcomed if contributed.
