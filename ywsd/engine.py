@@ -252,7 +252,7 @@ def main():
 
     logging_basic_config_params = {
         "format": "%(asctime)s:%(name)-10s:%(levelname)-8s:%(message)s",
-        "datefmt": "%H:%M:%S",
+        "datefmt": "%Y-%m-%d:%H:%M:%S",
     }
     if settings.LOG_FILE is not None:
         logging_basic_config_params["filename"] = settings.LOG_FILE
