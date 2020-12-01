@@ -112,6 +112,12 @@ class YateRoutingEngine(YateAsync):
                     ):
                         logging.error("Cannot register for call.route. Terminating...")
                         return
+                    await self.activate_automatic_bufsize()
+                    logging.info(
+                        "Yate buffer size defaults to {}".format(
+                            self.get_local("bufsize")
+                        )
+                    )
 
                 logging.info("Ready to route")
                 await self._shutdown_future
