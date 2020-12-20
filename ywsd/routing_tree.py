@@ -95,7 +95,7 @@ class RoutingTree:
         if self.target.name is not None:
             parameters["calledname"] = self.target.name
 
-        if (self.target.short_name is not None):
+        if self.target.short_name is not None:
             # Callername should always be populated by source parameters, otherwise, default to source name
             callername = self._source_params.get("callername", self.source.name)
             parameters["callername"] = "[{}] {}".format(
