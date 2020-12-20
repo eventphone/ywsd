@@ -119,6 +119,18 @@ active, the extension will be called independent of whether the line is currentl
 So please note that stage2 needs a particular configuration of the `cdrbuild` and `register` module in Yate to
 work correctly. See instructions below.
 
+### Static target routing
+
+Stage2 routing also supports static routing targets in addition to regular SIP users. Static routing targets can
+be used to dynamically configure extensions that are not a SIP client but rather a special yate call target like
+`conf/` or (most prominently) `external/`. In order to use static call routing, create an entry in the `users` table
+of stage2 routing with `type` being `static` instead of (the default) `user`. Put the yate call target into 
+`static_target`. You may use the syntax
+```
+external/nodata//opt/script.tcl arg1 arg2;myparam=myvalue;…
+```
+to popuate the semicolon separated `key=value` pairs into the `call.route`/`call.execute` message.
+
 ## Getting started
 
 Ywsd uses a PostgeSQL database backend that is accessed via the asyncio aiopg module. As a consequence, a minimal test
