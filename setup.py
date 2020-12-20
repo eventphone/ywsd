@@ -8,7 +8,7 @@ with open(os.path.join(this_dir, "README.md"), "r") as f:
 
 setup(
     name="ywsd",
-    version="0.9.17",
+    version="0.10.0",
     packages=["ywsd"],
     url="https://gitlab.rc5.de/eventphone/ywsd",
     license="AGPLv3+",
@@ -21,6 +21,7 @@ setup(
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     ],
     install_requires=[
