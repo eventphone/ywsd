@@ -1,4 +1,5 @@
 import logging
+from typing import List
 
 from yate.protocol import Message
 
@@ -49,6 +50,9 @@ class RoutingTask:
                 except DoesNotExist:
                     return False, False
 
+            if target.type == "static":
+                return self._static_target_routing(target)
+
             locations = await Registration.load_locations_for(
                 target, called, db_connection
             )
@@ -85,6 +89,32 @@ class RoutingTask:
 
             self.populate_additional_message_parameters(headers)
             return True, True
+
+    def _static_target_routing(self, target):
+        try:
+            separated_target = target.static_target.split(";")
+            message_params = self._process_static_target_parameters(
+                separated_target[1:]
+            )
+        except ValueError:
+            logging.error(
+                f"Encountered invalid static call target:'{target.static_target}'"
+            )
+            self._message.params["error"] = "failure"
+            return False, True
+        self._message.return_value = separated_target[0]
+        headers = get_headers(self._message)
+        self.populate_additional_message_parameters(headers)
+        self._message.params.update(message_params)
+        return True, True
+
+    @staticmethod
+    def _process_static_target_parameters(params: List[str]):
+        result = {}
+        for param in params:
+            key, value = param.split("=", 1)
+            result[key] = value
+        return result
 
     @retry_db_offline(count=4, wait_ms=1000)
     async def routing_job(self):

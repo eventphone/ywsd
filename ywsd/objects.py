@@ -52,6 +52,11 @@ class User:
         ),
         sa.Column("trunk", sa.Boolean, nullable=False, server_default="0"),
         sa.Column("call_waiting", sa.Boolean, nullable=False, server_default="1"),
+        sa.Column("static_target", sa.String(1024), nullable=False, server_default=""),
+        sa.CheckConstraint(
+            "(password != '') OR (type != 'user')",
+            name="sip_users_have_password",
+        ),
     )
 
     FIELDS_PLAIN = (
@@ -62,6 +67,7 @@ class User:
         "type",
         "trunk",
         "call_waiting",
+        "static_target",
     )
     FIELDS_TRANSFORM = (
         (
