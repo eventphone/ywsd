@@ -43,14 +43,15 @@ class RoutingTask:
 
     @staticmethod
     def calculate_source_parameters(source: Extension):
-        # push parameters here like faked-caller-id or caller-language
-        source_parameters = {}
+        # avoid name spoofing and push parameters here like faked-caller-id or caller-language
+        source_parameters = {
+            "callername": source.name,
+        }
         if source.outgoing_extension is not None and source.outgoing_extension != "":
             source_parameters["caller"] = source.outgoing_extension
-            source_parameters["callername"] = source.outgoing_name
-        else:
-            # avoid name spoofing
-            source_parameters["callername"] = source.name
+            # if there is a faked-callername set, apply it, otherwise we keep the original one
+            if source.outgoing_name is not None and source.outgoing_name != "":
+                source_parameters["callername"] = source.outgoing_name
         if source.lang is not None:
             source_parameters["osip_X-Caller-Language"] = source.lang
         if source.dialout_allowed:
