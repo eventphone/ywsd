@@ -4,7 +4,7 @@ import traceback
 from yate.protocol import Message
 
 import ywsd.yate
-from ywsd.objects import Extension, DoesNotExist
+from ywsd.objects import Extension, User, DoesNotExist
 from ywsd.routing_tree import RoutingTree, RoutingError
 from ywsd.util import retry_db_offline, OperationalError
 
@@ -29,6 +29,19 @@ class RoutingTask:
             except DoesNotExist:
                 # this caller doesn't exist in our database, create an external extension
                 return Extension.create_external(caller)
+
+            if (
+                self._message.params.get("connection_id")
+                in self._yate.settings.TRUSTED_LOCAL_LISTENERS
+            ):
+                if caller_extension.yate_id == self._yate.settings.LOCAL_YATE_ID:
+                    # this is a local extension and comes from a trusted listener, just let it through
+                    return caller_extension
+                else:
+                    logging.info(
+                        f"Incoming call from {caller} on a trusted local listener that is no local"
+                        f" extension. Will still require authentication."
+                    )
 
             username = self._message.params.get("username")
             if username is None:

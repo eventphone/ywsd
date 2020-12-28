@@ -21,6 +21,10 @@ LOCAL_YATE_ID: 2
 # The name of the yate voip listener that interconnects local yates
 INTERNAL_YATE_LISTENER: voip
 
+# The name of a listener that is trusted for all local extensions
+#TRUSTED_LOCAL_LISTENERS:
+#  - internal_udp
+
 CACHE_IMPLEMENTATION: "ywsd.routing_cache.PythonDictRoutingCache"
 #CACHE_IMPLEMENTATION: "ywsd.routing_cache.RedisRoutingCache"
 
