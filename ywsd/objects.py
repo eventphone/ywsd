@@ -424,7 +424,17 @@ class Extension(RoutingTreeNode):
                     dialed_number
                 )
             )
-        return cls(await res.first())
+        trunk = cls(await res.first())
+        trunk.trunk_extension = trunk.extension
+        trunk.extension = dialed_number
+        return trunk
+
+    @classmethod
+    async def load_extension_or_trunk(cls, dialed_number, db_connection):
+        try:
+            return await cls.load_extension(dialed_number, db_connection)
+        except DoesNotExist:
+            return await cls.load_trunk_extension(dialed_number, db_connection)
 
     async def load_forwarding_extension(self, db_connection):
         if self.forwarding_extension_id is None:
@@ -486,6 +496,13 @@ class Extension(RoutingTreeNode):
             if any([m.active for m in rank.members]):
                 return True
         return False
+
+    @property
+    def username(self):
+        if self.type == Extension.Type.TRUNK:
+            return self.trunk_extension
+        else:
+            return self.extension
 
 
 class ForkRank(RoutingTreeNode):

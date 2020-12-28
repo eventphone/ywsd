@@ -23,23 +23,26 @@ class RoutingTask:
             return caller
         else:
             try:
-                caller_extension = await Extension.load_extension(caller, db_connection)
-                username = self._message.params.get("username")
-                if username is None:
-                    raise RoutingError("noauth", "User needs authentication")
-                if username != caller:
-                    logging.warning(
-                        "User {} tries to act as caller {}. Returned Deny.".format(
-                            username, caller
-                        )
-                    )
-                    raise RoutingError(
-                        "forbidden", "Invalid authentication for this caller"
-                    )
-                return caller_extension
+                caller_extension = await Extension.load_extension_or_trunk(
+                    caller, db_connection
+                )
             except DoesNotExist:
                 # this caller doesn't exist in our database, create an external extension
                 return Extension.create_external(caller)
+
+            username = self._message.params.get("username")
+            if username is None:
+                raise RoutingError("noauth", "User needs authentication")
+            if username != caller_extension.username:
+                logging.warning(
+                    "User {} tries to act as caller {}. Returned Deny.".format(
+                        username, caller
+                    )
+                )
+                raise RoutingError(
+                    "forbidden", "Invalid authentication for this caller"
+                )
+            return caller_extension
 
     @staticmethod
     def calculate_source_parameters(source: Extension):
