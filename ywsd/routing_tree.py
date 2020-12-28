@@ -52,7 +52,7 @@ class RoutingTree:
         if self.target.type != Extension.Type.TRUNK:
             result = visitor.calculate_routing()
         else:
-            result = visitor.generate_trunk_routing(self.target, self.target_extension)
+            result = visitor.generate_trunk_routing(self.target)
         self.routing_result = result
         self.all_routing_results = visitor.get_routing_results()
         self.new_routing_cache_content = visitor.get_routing_cache_content()
@@ -126,20 +126,11 @@ class RoutingTree:
         except DoesNotExist:
             self.source = Extension.create_unknown(self.source_extension)
         try:
-            self.target = await Extension.load_extension(
+            self.target = await Extension.load_extension_or_trunk(
                 self.target_extension, db_connection
             )
             self.target.tree_identifier = str(self.target.id)
         except DoesNotExist:
-            # we give this one rescue attempt by trying to load a trunk
-            try:
-                self.target = await Extension.load_trunk_extension(
-                    self.target_extension, db_connection
-                )
-                self.target.tree_identifier = str(self.target.id)
-                return
-            except DoesNotExist:
-                pass
             raise RoutingError("noroute", "Routing target was not found")
 
 
@@ -484,7 +475,7 @@ class YateRoutingGenerationVisitor:
 
     @staticmethod
     def node_has_simple_routing(node: Extension):
-        if node.type == Extension.Type.EXTERNAL:
+        if node.type in [Extension.Type.EXTERNAL, Extension.Type.TRUNK]:
             return True
         # if the node is set to immediate forward, it will be ignored for routing and we calculate the routing for
         # the forwarded node instead
@@ -536,29 +527,10 @@ class YateRoutingGenerationVisitor:
                 },
             )
 
-    def generate_trunk_routing(self, trunk: Extension, dialed_number: str):
-        if trunk.yate_id is None:
-            raise RoutingError(
-                "failure",
-                "Trunk-Extension {} is misconfigured - yate_id is NULL.".format(trunk),
-            )
-        if trunk.yate_id == self._local_yate_id:
-            return IntermediateRoutingResult(
-                target=self._make_calltarget(
-                    "lateroute/{}".format(dialed_number), {"eventphone_stage2": "1"}
-                )
-            )
-        else:
-            return IntermediateRoutingResult(
-                target=self._make_calltarget(
-                    "sip/sip:{}@{}".format(
-                        dialed_number, self._yates_dict[trunk.yate_id].hostname
-                    ),
-                    {
-                        "oconnection_id": self._yates_dict[trunk.yate_id].voip_listener,
-                    },
-                )
-            )
+    def generate_trunk_routing(self, trunk: Extension):
+        return self._make_intermediate_result(
+            target=self.generate_simple_routing_target(trunk)
+        )
 
     def generate_deferred_routestring(self, path):
         return "lateroute/" + self.generate_node_route_string(path)
