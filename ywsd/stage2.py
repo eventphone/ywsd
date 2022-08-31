@@ -70,7 +70,7 @@ class RoutingTask:
                 self._message.params["error"] = "busy"
                 return False, True
             if await ActiveCall.is_active_call(
-                "called", headers["X-Eventphone-Id"], db_connection
+                called, headers["X-Eventphone-Id"], db_connection
             ):
                 self._message.params["error"] = "busy"
                 return False, True
