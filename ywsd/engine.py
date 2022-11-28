@@ -24,6 +24,7 @@ class YateRoutingEngine(YateAsync):
     def __init__(self, *args, **kwargs):
         self._settings = kwargs.pop("settings")
         self._web_only = kwargs.pop("web_only")
+        self._startup_complete_event = kwargs.pop("startup_complete_event")
         super().__init__(*args, **kwargs)
         self._shutdown_future = None
         self._routing_db_engine = None
@@ -57,12 +58,13 @@ class YateRoutingEngine(YateAsync):
     def run(self):
         if self._web_only:
             logging.info("Starting up in web server only mode")
-            self.main_task = self.event_loop.create_task(self.main(42))
-            self.event_loop.run_until_complete(self.main_task)
-            self.event_loop.close()
+            asyncio.run(self.main(43))
         else:
             logging.info("Initializing YateAsync engine")
             super().run(self.main)
+
+    def trigger_shutdown(self):
+        self._shutdown_future.set_result(True)
 
     async def main(self, _):
         logging.info("Initializing main application")
@@ -120,9 +122,13 @@ class YateRoutingEngine(YateAsync):
                     )
 
                 logging.info("Ready to route")
+                if self._startup_complete_event is not None:
+                    self._startup_complete_event.set()
                 await self._shutdown_future
 
         await self._routing_cache.stop()
+        if self._web_app is not None:
+            await self._app_runner.cleanup()
         self._routing_db_engine = None
         self._stage2_db_engine = None
 
@@ -142,12 +148,12 @@ class YateRoutingEngine(YateAsync):
                 task = stage2.RoutingTask(self, msg)
             else:
                 task = stage1.RoutingTask(self, msg)
-            self.event_loop.create_task(task.routing_job())
+            asyncio.create_task(task.routing_job())
         elif called.startswith("stage1-"):
-            self.event_loop.create_task(self._retrieve_from_cache_for(msg))
+            asyncio.create_task(self._retrieve_from_cache_for(msg))
         elif called.startswith("stage2-"):
             task = stage2.RoutingTask(self, msg)
-            self.event_loop.create_task(task.routing_job())
+            asyncio.create_task(task.routing_job())
         else:
             return False
 

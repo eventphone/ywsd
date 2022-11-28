@@ -67,7 +67,7 @@ class RoutingTree:
                 )
                 + ".slin"
             )
-            if os.path.isfile(ringback_path):
+            if RoutingTree.ringback_exists(ringback_path):
                 if self.routing_result.is_simple:
                     # we need to convert routing result into a simple fork
                     self.routing_result = IntermediateRoutingResult(
@@ -84,6 +84,10 @@ class RoutingTree:
                     self.routing_result.fork_targets.insert(
                         0, self._make_ringback_target(ringback_path)
                     )
+
+    @staticmethod
+    def ringback_exists(ringback_path):
+        return os.path.isfile(ringback_path)
 
     def _populate_parameters_global(self, parameters):
         self.routing_result.target.parameters.update(parameters)

@@ -1,54 +1,6 @@
-import asyncio
+from datetime import datetime
 
-from ywsd.settings import Settings
 from ywsd.objects import *
-from aiopg.sa import create_engine
-
-from ywsd.routing_tree import RoutingTree
-
-
-settings = Settings()
-
-
-async def reinstall_testdata():
-    async with create_engine(**settings.DB_CONFIG) as engine:
-        async with engine.acquire() as conn:
-            await regenerate_database_objects(conn)
-            await write_testdata(conn)
-
-
-async def get_extension(ext):
-    async with create_engine(**settings.DB_CONFIG) as engine:
-        async with engine.acquire() as conn:
-            res = await Extension.load_extension(ext, conn)
-            return res
-
-
-async def exec_with_db(func):
-    async with create_engine(**settings.DB_CONFIG) as engine:
-        async with engine.acquire() as conn:
-            return await func(conn)
-
-
-async def async_test_route(src, target, local_yate):
-    async with create_engine(**settings.DB_CONFIG) as engine:
-        async with engine.acquire() as conn:
-            yates = await Yate.load_yates_dict(conn)
-            tree = RoutingTree(src, target, settings)
-            await tree.discover_tree(conn)
-            tree.calculate_routing(local_yate, yates)
-            return tree
-
-
-def test_route(src, target, local_yate):
-    l = asyncio.get_event_loop()
-    return l.run_until_complete(async_test_route(src, target, local_yate))
-
-
-def test_route_display(src, target, local_yate):
-    tree = test_route(src, target, local_yate)
-    print(repr(tree.routing_result))
-    print(repr(tree.new_routing_cache_content))
 
 
 yates_dict = {1: "dect", 2: "sip", 3: "app"}
@@ -81,8 +33,6 @@ async def write_testdata(conn):
     async for row in conn.execute(Yate.table.select()):
         yates[row.hostname] = row.id
 
-    print(repr(yates))
-
     await conn.execute(
         Extension.table.insert().values(
             [
@@ -92,7 +42,9 @@ async def write_testdata(conn):
                     "name": "PoC",
                     "type": "GROUP",
                     "forwarding_mode": "DISABLED",
+                    "forwarding_delay": None,
                     "lang": "de_DE",
+                    "ringback": None,
                 },
                 {
                     "yate_id": yates["dect"],
@@ -100,7 +52,9 @@ async def write_testdata(conn):
                     "name": "PoC Sascha",
                     "type": "MULTIRING",
                     "forwarding_mode": "DISABLED",
+                    "forwarding_delay": None,
                     "lang": "de_DE",
+                    "ringback": None,
                 },
                 {
                     "yate_id": yates["dect"],
@@ -108,7 +62,9 @@ async def write_testdata(conn):
                     "name": "PoC Bernie",
                     "type": "SIMPLE",
                     "forwarding_mode": "DISABLED",
+                    "forwarding_delay": None,
                     "lang": "de_DE",
+                    "ringback": "39bb3bad01bf931b34f3983536c0f331e4b4e3e38fb78abfc75e5b09efd6507f",
                 },
                 {
                     "yate_id": yates["dect"],
@@ -116,7 +72,9 @@ async def write_testdata(conn):
                     "name": "PoC BeF",
                     "type": "SIMPLE",
                     "forwarding_mode": "DISABLED",
+                    "forwarding_delay": None,
                     "lang": "de_DE",
+                    "ringback": None,
                 },
                 {
                     "yate_id": yates["sip"],
@@ -124,7 +82,9 @@ async def write_testdata(conn):
                     "name": "PoC Sascha (SIP)",
                     "type": "SIMPLE",
                     "forwarding_mode": "DISABLED",
+                    "forwarding_delay": None,
                     "lang": "de_DE",
+                    "ringback": None,
                 },
                 {
                     "yate_id": yates["sip"],
@@ -132,7 +92,29 @@ async def write_testdata(conn):
                     "name": "PoC Garwin",
                     "type": "SIMPLE",
                     "forwarding_mode": "DISABLED",
+                    "forwarding_delay": None,
                     "lang": "de_DE",
+                    "ringback": None,
+                },
+                {
+                    "yate_id": yates["sip"],
+                    "extension": "2099",
+                    "name": "PoC Helpdesk",
+                    "type": "SIMPLE",
+                    "forwarding_mode": "DISABLED",
+                    "forwarding_delay": 20,
+                    "lang": "de_DE",
+                    "ringback": None,
+                },
+                {
+                    "yate_id": yates["sip"],
+                    "extension": "2098",
+                    "name": "PoC Helpdesk II",
+                    "type": "SIMPLE",
+                    "forwarding_mode": "DISABLED",
+                    "forwarding_delay": 0,
+                    "lang": "de_DE",
+                    "ringback": None,
                 },
             ]
         )
@@ -141,7 +123,17 @@ async def write_testdata(conn):
     exts = {}
     async for row in conn.execute(Extension.table.select()):
         exts[row.extension] = row.id
-    print(repr(exts))
+
+    await conn.execute(
+        Extension.table.update()
+        .where(Extension.table.c.extension == "2099")
+        .values({"forwarding_extension_id": exts["2042"], "forwarding_mode": "ENABLED"})
+    )
+    await conn.execute(
+        Extension.table.update()
+        .where(Extension.table.c.extension == "2098")
+        .values({"forwarding_extension_id": exts["2005"], "forwarding_mode": "ENABLED"})
+    )
 
     await conn.execute(
         ForkRank.table.insert().values(
@@ -155,7 +147,6 @@ async def write_testdata(conn):
     cgr = {}
     async for row in conn.execute(ForkRank.table.select()):
         cgr[row.extension_id] = row.id
-    print(repr(cgr))
 
     await conn.execute(
         ForkRank.member_table.insert().values(
@@ -189,6 +180,56 @@ async def write_testdata(conn):
                     "extension_id": exts["2005"],
                     "rankmember_type": "DEFAULT",
                     "active": True,
+                },
+            ]
+        )
+    )
+
+    # Stage 2 testdata
+    await conn.execute(
+        User.table.insert().values(
+            [
+                {
+                    "username": "2005",
+                    "displayname": "PoC Sascha (SIP)",
+                    "password": "secret",
+                    "call_waiting": True,
+                    "inuse": 0,
+                },
+                {
+                    "username": "2042",
+                    "displayname": "PoC Garwin",
+                    "password": "secret",
+                    "call_waiting": False,
+                    "inuse": 1,
+                },
+            ]
+        )
+    )
+    await conn.execute(
+        Registration.table.insert().values(
+            [
+                {
+                    "username": "2005",
+                    "location": "sip/sip:2005@1.2.3.4/foo",
+                    "oconnection_id": "internet",
+                    "expires": datetime(2199, 12, 31, 10, 10),
+                },
+                {
+                    "username": "2042",
+                    "location": "sip/sip:2042@4.3.2.1/bar",
+                    "oconnection_id": "internet",
+                    "expires": datetime(2199, 12, 31, 10, 10),
+                },
+            ]
+        )
+    )
+    await conn.execute(
+        ActiveCall.table.insert().values(
+            [
+                {
+                    "username": "2042",
+                    "x_eventphone_id": "83ded8b334034789a2c0e1405a54af76",
                 },
             ]
         )

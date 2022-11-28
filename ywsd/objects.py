@@ -5,7 +5,8 @@ from enum import Enum
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.sql.ddl import CreateTable, CreateIndex
-from sqlalchemy.sql.expression import bindparam
+from sqlalchemy.sql.expression import bindparam, func
+from sqlalchemy.sql import select
 
 metadata = sa.MetaData()
 
@@ -178,7 +179,7 @@ class ActiveCall:
     async def is_active_call(cls, username, x_eventphone_id, db_connection):
         return (
             await db_connection.scalar(
-                cls.table.count()
+                select(func.count(cls.table.c.username))
                 .where(cls.table.c.username == username)
                 .where(cls.table.c.x_eventphone_id == x_eventphone_id)
             )

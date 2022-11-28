@@ -1,0 +1,38 @@
+RINGBACK_TOP_DIRECTORY: "/opt/sounds"
+
+DB_CONFIG:
+  host: "localhost"
+  port: 50432
+  user: ywsd
+  password: 123456
+  database: "ywsd"
+
+STAGE2_DB_CONFIG:
+  host: "localhost"
+  port: 50432
+  user: ywsd
+  password: 123456
+  database: "ywsd"
+
+# The id of this yate in the yates table to determine if calls are local/remote
+LOCAL_YATE_ID: 2
+
+# The name of the yate voip listener that interconnects local yates
+INTERNAL_YATE_LISTENER: voip
+
+CACHE_IMPLEMENTATION: "ywsd.routing_cache.PythonDictRoutingCache"
+
+# Add a logfile here if you want file logging instead of stdout logging
+LOG_FILE:
+LOG_VERBOSE:
+
+# Details of the yate extmodule connection.
+YATE_CONNECTION:
+  host: localhost
+  port: 5039
+# Alternatively to host/port it can have a sockpath parameter that points to a UNIX domain socket
+
+# Where the web interface should bind.
+WEB_INTERFACE:
+  bind_address: localhost
+  port: 9042
