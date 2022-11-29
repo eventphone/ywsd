@@ -24,7 +24,7 @@ class YateRoutingEngine(YateAsync):
     def __init__(self, *args, **kwargs):
         self._settings = kwargs.pop("settings")
         self._web_only = kwargs.pop("web_only")
-        self._startup_complete_event = kwargs.pop("startup_complete_event")
+        self._startup_complete_event = kwargs.pop("startup_complete_event", None)
         super().__init__(*args, **kwargs)
         self._shutdown_future = None
         self._routing_db_engine = None
