@@ -179,7 +179,7 @@ class ActiveCall:
     async def is_active_call(cls, username, x_eventphone_id, db_connection):
         return (
             await db_connection.scalar(
-                select(func.count(cls.table.c.username))
+                select([func.count(cls.table.c.username)])
                 .where(cls.table.c.username == username)
                 .where(cls.table.c.x_eventphone_id == x_eventphone_id)
             )
