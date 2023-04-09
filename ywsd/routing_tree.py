@@ -106,6 +106,9 @@ class RoutingTree:
                 self.target.short_name, callername
             )
 
+        parameters["x_originally_called"] = self.target_extension
+        parameters["osip_X-Originally-Called"] = self.target_extension
+
         self._populate_parameters_global(parameters)
 
     @staticmethod

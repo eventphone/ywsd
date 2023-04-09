@@ -29,7 +29,7 @@ setup(
         "aiohttp",
         "python-yate>=0.4",
         "pyyaml",
-        "sqlalchemy",
+        "sqlalchemy==1.4.*",
     ],
     entry_points={
         "console_scripts": [
