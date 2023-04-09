@@ -33,7 +33,7 @@ def validate_routing_tree(observed, expected):
 
     assert ("fork_ranks" in observed) == ("fork_ranks" in expected)
     if "fork_ranks" in observed:
-        for (observed_rank, expected_rank) in zip(
+        for observed_rank, expected_rank in zip(
             observed["fork_ranks"], expected["fork_ranks"]
         ):
             for key in expected_rank.keys():
@@ -41,7 +41,7 @@ def validate_routing_tree(observed, expected):
                     continue
                 assert observed_rank[key] == expected_rank[key]
         assert len(observed_rank["members"]) == len(expected_rank["members"])
-        for (observed_member, expected_member) in zip(
+        for observed_member, expected_member in zip(
             observed_rank["members"], expected_rank["members"]
         ):
             if "type" in expected_member:
@@ -261,13 +261,26 @@ async def test_webserver_delayed_forward_4748_to_2099(ywsd_engine_web):
             assert data["routing_status"] == "OK"
             main_routing_result = data["main_routing_result"]
             assert main_routing_result["type"] == "Type.FORK"
+            assert (
+                main_routing_result["target"]["parameters"]["x_originally_called"]
+                == "2099"
+            )
+            assert (
+                main_routing_result["target"]["parameters"]["osip_X-Originally-Called"]
+                == "2099"
+            )
             expected_fork_targets = [
                 {
                     "target": "lateroute/2099",
                     "parameters": {"eventphone_stage2": "1"},
                 },
                 {"target": "|drop=20"},
-                {"target": "lateroute/2042", "parameters": {"eventphone_stage2": "1"}},
+                {
+                    "target": "lateroute/2042",
+                    "parameters": {
+                        "eventphone_stage2": "1",
+                    },
+                },
             ]
             validate_fork_targets(
                 main_routing_result["fork_targets"], expected_fork_targets
@@ -297,6 +310,10 @@ async def test_webserver_immediate_forward_4748_to_2098(ywsd_engine_web):
                 main_routing_result["target"],
                 {
                     "target": "lateroute/2005",
+                    "parameters": {
+                        "x_originally_called": "2098",
+                        "osip_X-Originally-Called": "2098",
+                    },
                 },
             )
             expected_routing_tree = {

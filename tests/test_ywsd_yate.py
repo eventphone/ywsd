@@ -214,6 +214,8 @@ async def test_ywsd_delayed_call_fwd_4748_to_2099(ywsd_engine_ysim):
     result = await yate_sim.submit_message(msg)
     assert result.processed
     assert result.return_value == "fork"
+    assert result.params["x_originally_called"] == "2099"
+    assert result.params["osip_X-Originally-Called"] == "2099"
     assert result.params["callto.1"] == "lateroute/2099"
     assert result.params["callto.2"] == "|drop=20"
     assert result.params["callto.3"] == "lateroute/2042"
@@ -229,3 +231,5 @@ async def test_ywsd_immediate_call_fwd_4748_to_2098(ywsd_engine_ysim):
     assert result.processed
     assert result.return_value == "lateroute/2005"
     assert result.params["eventphone_stage2"] == "1"
+    assert result.params["x_originally_called"] == "2098"
+    assert result.params["osip_X-Originally-Called"] == "2098"
