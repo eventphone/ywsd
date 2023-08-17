@@ -464,14 +464,17 @@ class YateRoutingGenerationVisitor:
             ):
                 # this is non-immediate forward
                 forwarding_route = self._visit(node.forwarding_extension, local_path)
-                if node.forwarding_mode == Extension.ForwardingMode.ENABLED:
-                    fwd_delay = node.forwarding_delay - accumulated_delay
-                    fork_targets.append(CallTarget("|drop={}".format(fwd_delay)))
-                else:
-                    # Add a default rank, call will progress to next rang when all previous calls failed
-                    fork_targets.append(CallTarget("|"))
-                fork_targets.append(forwarding_route.target)
-                self._cache_intermediate_result(forwarding_route)
+                # if we obtained a valid route, we add this as new fork target here. Otherwise, we keep
+                # the current fork ranks and just move on.
+                if forwarding_route.is_valid:
+                    if node.forwarding_mode == Extension.ForwardingMode.ENABLED:
+                        fwd_delay = node.forwarding_delay - accumulated_delay
+                        fork_targets.append(CallTarget("|drop={}".format(fwd_delay)))
+                    else:
+                        # Add a default rank, call will progress to next rang when all previous calls failed
+                        fork_targets.append(CallTarget("|"))
+                    fork_targets.append(forwarding_route.target)
+                    self._cache_intermediate_result(forwarding_route)
 
             return self._make_intermediate_result(
                 fork_targets=fork_targets,
