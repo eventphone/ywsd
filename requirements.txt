@@ -3,4 +3,4 @@ aiopg
 aioredis
 python-yate
 pyyaml
-sqlalchemy
+sqlalchemy<2.0.0
