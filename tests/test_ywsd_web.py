@@ -324,3 +324,34 @@ async def test_webserver_immediate_forward_4748_to_2098(ywsd_engine_web):
             }
             validate_routing_tree(data["routing_tree"], expected_routing_tree)
             assert data["routing_tree"]["forwarding_extension"]["extension"] == "2005"
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("ywsd_engine_web")
+async def test_webserver_delayed_forward_to_empty_group_4000(ywsd_engine_web):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            "http://localhost:9042/stage1?caller=4748&called=4001"
+        ) as response:
+            data = await response.json()
+            print(repr(data))
+            assert data["routing_status"] == "OK"
+            main_routing_result = data["main_routing_result"]
+            assert main_routing_result["type"] == "Type.FORK"
+            expected_fork_targets = [
+                {
+                    "target": "lateroute/4001",
+                    "parameters": {"eventphone_stage2": "1"},
+                },
+            ]
+            validate_fork_targets(
+                main_routing_result["fork_targets"], expected_fork_targets
+            )
+            expected_routing_tree = {
+                "extension": "4001",
+                "type": "Type.SIMPLE",
+                "forwarding_mode": "ForwardingMode.ENABLED",
+                "forwarding_delay": 10,
+            }
+            validate_routing_tree(data["routing_tree"], expected_routing_tree)
+            assert data["routing_tree"]["forwarding_extension"]["extension"] == "4000"

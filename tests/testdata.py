@@ -116,6 +116,26 @@ async def write_testdata(conn):
                     "lang": "de_DE",
                     "ringback": None,
                 },
+                {
+                    "yate_id": None,
+                    "extension": "4000",
+                    "name": "Empty Group",
+                    "type": "GROUP",
+                    "forwarding_mode": "DISABLED",
+                    "forwarding_delay": None,
+                    "lang": "de_DE",
+                    "ringback": None,
+                },
+                {
+                    "yate_id": yates["sip"],
+                    "extension": "4001",
+                    "name": "I Forward to empty group",
+                    "type": "SIMPLE",
+                    "forwarding_mode": "DISABLED",
+                    "forwarding_delay": 10,
+                    "lang": "de_DE",
+                    "ringback": None,
+                },
             ]
         )
     )
@@ -133,6 +153,11 @@ async def write_testdata(conn):
         Extension.table.update()
         .where(Extension.table.c.extension == "2098")
         .values({"forwarding_extension_id": exts["2005"], "forwarding_mode": "ENABLED"})
+    )
+    await conn.execute(
+        Extension.table.update()
+        .where(Extension.table.c.extension == "4001")
+        .values({"forwarding_extension_id": exts["4000"], "forwarding_mode": "ENABLED"})
     )
 
     await conn.execute(
