@@ -175,10 +175,7 @@ class RoutingTreeDiscoveryVisitor:
         path_extensions_local = path_extensions.copy()
         path_extensions_local.append(node.extension)
 
-        if (
-            node.type != Extension.Type.EXTERNAL
-            and node.forwarding_mode != Extension.ForwardingMode.DISABLED
-        ):
+        if node.forwarding_mode != Extension.ForwardingMode.DISABLED:
             await node.load_forwarding_extension(db_connection)
         if node.type in (Extension.Type.GROUP, Extension.Type.MULTIRING) and (
             node.forwarding_mode != Extension.ForwardingMode.ENABLED
