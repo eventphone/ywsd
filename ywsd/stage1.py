@@ -29,7 +29,10 @@ class RoutingTask:
             except DoesNotExist:
                 # this caller doesn't exist in our database, create an external extension
                 return Extension.create_external(caller)
-
+            if caller_extension.type == Extension.Type.EXTERNAL:
+                # this is an external extension that we also explicitly have in our db,
+                # return it similar to the on-the-fly created external extension
+                return caller_extension
             if (
                 self._message.params.get("connection_id")
                 in self._yate.settings.TRUSTED_LOCAL_LISTENERS
