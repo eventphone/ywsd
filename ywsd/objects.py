@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from collections import namedtuple
 from enum import Enum
 
@@ -226,6 +227,15 @@ class RoutingTreeNode:
     def __init__(self):
         self._log = []
         self._tree_identifier = None
+        self._discovery_time = None
+
+    @property
+    def discovery_time(self):
+        return self._discovery_time
+
+    @discovery_time.setter
+    def discovery_time(self, dt):
+        self._discovery_time = dt
 
     @property
     def tree_identifier(self):
@@ -243,6 +253,9 @@ class RoutingTreeNode:
         data.update({key: str(getattr(self, key)) for key, _ in self.FIELDS_TRANSFORM})
         data["tree_identifier"] = self.tree_identifier
         data["logs"] = [entry.serialize() for entry in self._log]
+        data["discovery_time_us"] = (
+            int(self.discovery_time * 1e6) if self.discovery_time is not None else None
+        )
         return data
 
 
@@ -399,12 +412,17 @@ class Extension(RoutingTreeNode):
 
     @classmethod
     async def load_extension(cls, extension, db_connection):
+        load_time_start = datetime.now()
         res = await db_connection.execute(
             cls.table.select().where(cls.table.c.extension == extension)
         )
         if res.rowcount == 0:
             raise DoesNotExist('No extension "{}" found'.format(extension))
-        return cls(await res.first())
+        obj = cls(await res.first())
+        # we may override the discovery time later (if this node is further discovered) but initialize the
+        # discovery time to the mere load time if the node isn't discovered further
+        obj.discovery_time = (datetime.now() - load_time_start).total_seconds()
+        return obj
 
     @classmethod
     async def load_trunk_extension(cls, dialed_number, db_connection):
@@ -438,6 +456,7 @@ class Extension(RoutingTreeNode):
             return await cls.load_trunk_extension(dialed_number, db_connection)
 
     async def load_forwarding_extension(self, db_connection):
+        load_time_start = datetime.now()
         if self.forwarding_extension_id is None:
             raise DoesNotExist("This extension has no forwarding extension")
         res = await db_connection.execute(
@@ -445,12 +464,16 @@ class Extension(RoutingTreeNode):
         )
         # this always exists and is unique by db constraints
         self.forwarding_extension = Extension(await res.first())
+        self.forwarding_extension.discovery_time = (
+            datetime.now() - load_time_start
+        ).total_seconds()
         if self.tree_identifier is not None:
             self.forwarding_extension.tree_identifier = (
                 self.tree_identifier + "-" + str(self.forwarding_extension.id)
             )
 
     async def populate_fork_ranks(self, db_connection):
+        load_time_start = datetime.now()
         result = await db_connection.execute(
             sa.select(
                 [ForkRank.table, ForkRank.member_table, Extension.table],
@@ -472,17 +495,29 @@ class Extension(RoutingTreeNode):
                     current_rank.tree_identifier = (
                         self.tree_identifier + "-fr" + str(current_rank.id)
                     )
+                if self.fork_ranks:
+                    self.fork_ranks[-1].discovery_time = (
+                        datetime.now() - load_time_start
+                    ).total_seconds()
                 self.fork_ranks.append(current_rank)
             member = ForkRank.Member(
                 ForkRank.RankMemberType[row.ForkRankMember_rankmember_type],
                 row.ForkRankMember_active,
                 Extension(row, prefix="Extension_"),
             )
+            member.extension.discovery_time = (
+                datetime.now() - load_time_start
+            ).total_seconds()
             if self.tree_identifier is not None:
                 member.extension.tree_identifier = (
                     current_rank.tree_identifier + "-" + str(member.extension.id)
                 )
             current_rank.members.append(member)
+
+        if self.fork_ranks:
+            self.fork_ranks[-1].discovery_time = (
+                datetime.now() - load_time_start
+            ).total_seconds()
 
     @property
     def immediate_forward(self):

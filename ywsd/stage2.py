@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 from typing import List
 
@@ -118,6 +119,7 @@ class RoutingTask:
 
     @retry_db_offline(count=4, wait_ms=1000)
     async def routing_job(self):
+        routing_time_start = datetime.now()
         caller = self._message.params.get("caller")
         called = self._message.params.get("called")
 
@@ -143,3 +145,19 @@ class RoutingTask:
             logging.debug("Routing not successful, noroute, pass message on")
 
         self._yate.answer_message(self._message, handled)
+        routing_time_us = int(
+            (datetime.now() - routing_time_start).total_seconds() * 1e6
+        )
+        logging.debug(
+            "Stage2 routing %s to %s took %s us", caller, called, routing_time_us
+        )
+        if (
+            routing_time_us
+            >= self._yate.settings.ROUTING_TIME_WARNING_THRESHOLD_MS * 1000
+        ):
+            logging.warning(
+                "Stage2 routing %s to %s took long: %s us",
+                caller,
+                called,
+                routing_time_us,
+            )

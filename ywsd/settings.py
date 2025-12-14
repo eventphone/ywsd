@@ -3,7 +3,10 @@ import yaml
 
 
 class Settings:
-    _default_map = {"TRUSTED_LOCAL_LISTENERS": []}
+    _default_map = {
+        "TRUSTED_LOCAL_LISTENERS": [],
+        "ROUTING_TIME_WARNING_THRESHOLD_MS": 1000,
+    }
 
     def __init__(self, config_file=None):
         if config_file is None:

@@ -8,7 +8,7 @@ with open(os.path.join(this_dir, "README.md"), "r") as f:
 
 setup(
     name="ywsd",
-    version="0.13.2",
+    version="0.13.3",
     packages=["ywsd"],
     url="https://gitlab.rc5.de/eventphone/ywsd",
     license="AGPLv3+",
@@ -19,10 +19,10 @@ setup(
     description="A yate routing engine for event telephone networks",
     classifiers=[
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
         "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     ],
     install_requires=[

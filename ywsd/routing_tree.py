@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from enum import Enum
 from typing import List, Dict, Tuple, Optional
 import os.path
@@ -172,6 +173,8 @@ class RoutingTreeDiscoveryVisitor:
             self._failed = True
             return
 
+        discovery_start = datetime.now()
+
         path_extensions_local = path_extensions.copy()
         path_extensions_local.append(node.extension)
 
@@ -183,6 +186,7 @@ class RoutingTreeDiscoveryVisitor:
         ):
             # we discover group members if there is no immediate forward
             await node.populate_fork_ranks(db_connection)
+
         # now we visit the populated children if they haven't been already discovered
         if node.forwarding_extension is not None:
             # TODO: We might want to avoid following forwards if this is discovered as a MULTIRING child?
@@ -219,6 +223,16 @@ class RoutingTreeDiscoveryVisitor:
                         related_node=member.extension,
                     )
                     member.active = False
+
+        # we save the full discovery time for this node (including discovery for all subnodes of the tree)
+        # We add the time spent here because the time that is used to initially load this
+        # node from the database was already stored there by the loader function.
+        discovery_time = (datetime.now() - discovery_start).total_seconds()
+        node.discovery_time = (
+            node.discovery_time + discovery_time
+            if node.discovery_time
+            else discovery_time
+        )
 
 
 class CallTarget:
