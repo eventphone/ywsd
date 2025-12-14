@@ -27,7 +27,7 @@ def postgres_server():
             container.stop()
 
     container = client.containers.run(
-        "postgres:14-bullseye",
+        "postgres:15-bookworm",
         detach=True,
         auto_remove=True,
         ports={"5432/tcp": 50432},
