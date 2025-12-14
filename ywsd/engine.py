@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, Dict
 import argparse
 import asyncio
@@ -190,6 +191,7 @@ class YateRoutingEngine(YateAsync):
         routing_status = "PROCESSING"
         routing_status_details = ""
         try:
+            routing_time_start = datetime.now()
             async with self.routing_db_engine.acquire() as db_connection:
                 try:
                     caller_extension = await Extension.load_extension(
@@ -210,6 +212,18 @@ class YateRoutingEngine(YateAsync):
             )
             all_routing_results = routing_tree.all_routing_results
             routing_status = "OK"
+            routing_time_us = int(
+                (datetime.now() - routing_time_start).total_seconds() * 1e6
+            )
+            if (
+                routing_time_us
+                >= self.settings.ROUTING_TIME_WARNING_THRESHOLD_MS * 1000
+            ):
+                logging.debug(
+                    "Routing tree trace of slow routing operation: %s",
+                    routing_tree.serialized_tree(),
+                )
+            routing_status_details = "Routing took {}us".format(routing_time_us)
         except RoutingError as e:
             routing_status = "ERROR"
             all_routing_results = {}
@@ -226,9 +240,9 @@ class YateRoutingEngine(YateAsync):
 
         json_response_data = {
             "routing_tree": routing_tree.serialized_tree(),
-            "main_routing_result": routing_result.serialize()
-            if routing_result is not None
-            else None,
+            "main_routing_result": (
+                routing_result.serialize() if routing_result is not None else None
+            ),
             "all_routing_results": {
                 key: result.serialize()
                 for key, result in all_routing_results.items()

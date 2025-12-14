@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 import traceback
 
@@ -13,6 +14,7 @@ class RoutingTask:
     def __init__(self, yate: "ywsd.engine.YateRoutingEngine", message: Message):
         self._yate = yate
         self._message = message
+        self._routing_tree = None
 
     async def _sanitize_caller(self, caller, db_connection) -> Extension:
         # if it comes from the internal yate listener, we just trust it
@@ -87,12 +89,15 @@ class RoutingTask:
                     caller_params = {}
 
                 logging.debug("Routing {} to {}".format(caller, called))
-                routing_tree = RoutingTree(
+                self._routing_tree = RoutingTree(
                     caller, called, caller_params, self._yate.settings
                 )
-                await routing_tree.discover_tree(db_connection)
+                await self._routing_tree.discover_tree(db_connection)
 
-            routing_result, routing_cache_entries = routing_tree.calculate_routing(
+            (
+                routing_result,
+                routing_cache_entries,
+            ) = self._routing_tree.calculate_routing(
                 self._yate.settings.LOCAL_YATE_ID, self._yate.yates_dict
             )
             logging.debug(
@@ -132,6 +137,7 @@ class RoutingTask:
 
     @retry_db_offline(count=4, wait_ms=1000)
     async def routing_job(self):
+        routing_time_start = datetime.now()
         caller = self._message.params.get("caller")
         called = self._message.params.get("called")
         if caller is None:
@@ -139,3 +145,23 @@ class RoutingTask:
             self._yate.answer_message(self._message, False)
         result_message, handled = await self._calculate_stage1_routing(caller, called)
         self._yate.answer_message(result_message, handled)
+        routing_time_us = int(
+            (datetime.now() - routing_time_start).total_seconds() * 1e6
+        )
+        logging.debug(
+            "Stage1 routing %s to %s took %s us", caller, called, routing_time_us
+        )
+        if (
+            routing_time_us
+            >= self._yate.settings.ROUTING_TIME_WARNING_THRESHOLD_MS * 1000
+        ):
+            logging.warning(
+                "Stage1 routing %s to %s took long: %s us",
+                caller,
+                called,
+                routing_time_us,
+            )
+            logging.debug(
+                "Routing tree trace of slow routing:\n%s",
+                self._routing_tree.serialized_tree(),
+            )
