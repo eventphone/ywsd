@@ -3,6 +3,7 @@ from typing import Optional, Dict
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import traceback
 
@@ -45,6 +46,8 @@ class YateRoutingEngine(YateAsync):
         else:
             self._web_app = None
 
+        self.set_termination_handler(self.termination_handler)
+
     @property
     def settings(self):
         return self._settings
@@ -68,6 +71,12 @@ class YateRoutingEngine(YateAsync):
     @property
     def busy_cache(self):
         return self._busy_cache_engine
+
+    @staticmethod
+    def termination_handler():
+        # shutdown hard when connection to yate is lost
+        logging.error("Connection to yate lost. Terminating.")
+        os._exit(1)
 
     def run(self):
         if self._web_only:
