@@ -38,6 +38,12 @@ class RoutingTask:
         else:
             self._message.params["copyparams"] = "X-Eventphone-Id"
 
+    async def _check_target_busy(self, target: User):
+        logging.debug("Check busyness of %s", target.username)
+        if self._yate.busy_cache is not None:
+            return await self._yate.busy_cache.is_busy(target.username)
+        return target.inuse > 0
+
     async def _calculate_stage2_routing(self, caller, called):
         if called.startswith("stage2-"):
             called = called[7:]
@@ -65,9 +71,9 @@ class RoutingTask:
             headers = get_headers(self._message)
 
             # Check if this call should be dropped
-            if (
-                headers["X-No-Call-Wait"] == "1" or not target.call_waiting
-            ) and target.inuse > 0:
+            if (headers["X-No-Call-Wait"] == "1" or not target.call_waiting) and (
+                await self._check_target_busy(target)
+            ):
                 self._message.params["error"] = "busy"
                 return False, True
             if await ActiveCall.is_active_call(

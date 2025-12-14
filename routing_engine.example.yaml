@@ -25,11 +25,18 @@ INTERNAL_YATE_LISTENER: voip
 #TRUSTED_LOCAL_LISTENERS:
 #  - internal_udp
 
+# Uncomment to enable redis connection for redis-based caches
+# REDIS: "unix:///run/redis/redis.sock"
+
 CACHE_IMPLEMENTATION: "ywsd.routing_cache.PythonDictRoutingCache"
 #CACHE_IMPLEMENTATION: "ywsd.routing_cache.RedisRoutingCache"
 
+# Uncomment the following line to enable internal busy cache instead of yate-based in db.
+# BUSY_CACHE_IMPLEMENTATION: "ywsd.busy_cache.PythonDictBusyCache"
+# BUSY_CACHE_IMPLEMENTATION: "ywsd.busy_cache.RedisBusyCache"
+
+
 #CACHE_CONFIG:
-#  address: "/run/redis/redis.sock"
 #  object_lifetime: 600
 
 # Add a logfile here if you want file logging instead of stdout logging

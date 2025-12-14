@@ -36,6 +36,8 @@ setup(
         "console_scripts": [
             "ywsd_init_db=ywsd.objects:main",
             "ywsd_engine=ywsd.engine:main",
+            "ywsd_busy_cache=ywsd.busy_cache:main",
         ],
     },
+    extra_require={"redis": ["redis[hiredis]"]},
 )
