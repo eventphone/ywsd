@@ -6,6 +6,7 @@ class Settings:
     _default_map = {
         "TRUSTED_LOCAL_LISTENERS": [],
         "ROUTING_TIME_WARNING_THRESHOLD_MS": 1000,
+        "CACHE_CONFIG": {},
     }
 
     def __init__(self, config_file=None):

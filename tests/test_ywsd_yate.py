@@ -1,3 +1,4 @@
+import asyncio
 from unittest import mock
 
 import pytest
@@ -139,6 +140,13 @@ async def test_ywsd_full_routing_with_stage2(ywsd_engine_ysim):
 @pytest.mark.usefixtures("ywsd_engine_ysim")
 async def test_ywsd_full_routing_with_stage2_no_callwaiting(ywsd_engine_ysim):
     engine, yate_sim = ywsd_engine_ysim
+
+    # we inform the internal busy cache that 2042 is on a call
+    msg = MessageRequest("call.cdr", {"operation": "initialize", "external": "2042"})
+    result = await yate_sim.submit_message(msg)
+    assert not result.processed
+    # unfortunately the routing engine processes this asynchronously, we need to artificially wait here for completion
+    await asyncio.sleep(0.5)
 
     msg = MessageRequest("call.route", {"caller": "4748", "called": "2042"})
     result = await yate_sim.submit_message(msg)

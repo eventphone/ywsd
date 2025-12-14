@@ -22,6 +22,8 @@ INTERNAL_YATE_LISTENER: voip
 
 CACHE_IMPLEMENTATION: "ywsd.routing_cache.PythonDictRoutingCache"
 
+BUSY_CACHE_IMPLEMENTATION: "ywsd.busy_cache.PythonDictBusyCache"
+
 # Add a logfile here if you want file logging instead of stdout logging
 LOG_FILE:
 LOG_VERBOSE:

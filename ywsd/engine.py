@@ -30,12 +30,17 @@ class YateRoutingEngine(YateAsync):
         self._shutdown_future = None
         self._routing_db_engine = None
         self._stage2_db_engine = None
+        self._redis_pool = None
+        self._busy_cache_engine = None
         self._routing_cache: Optional[RoutingCacheBase] = None
         self._yates_dict: Dict[int, Yate] = {}
 
         if self._settings.WEB_INTERFACE is not None:
             self._web_app = web.Application()
             self._web_app.add_routes([web.get("/stage1", self._web_stage1_handler)])
+            self._web_app.add_routes(
+                [web.get("/busy_cache", self._web_busy_cache_status)]
+            )
             self._app_runner = web.AppRunner(self._web_app)
         else:
             self._web_app = None
@@ -55,6 +60,14 @@ class YateRoutingEngine(YateAsync):
     @property
     def stage2_db_engine(self):
         return self._stage2_db_engine
+
+    @property
+    def redis_pool(self):
+        return self._redis_pool
+
+    @property
+    def busy_cache(self):
+        return self._busy_cache_engine
 
     def run(self):
         if self._web_only:
@@ -81,6 +94,21 @@ class YateRoutingEngine(YateAsync):
             self.settings.CACHE_IMPLEMENTATION
         )(self, self.settings)
         await self._routing_cache.init()
+
+        if self._settings.BUSY_CACHE_IMPLEMENTATION is not None and not self._web_only:
+            logging.info("Initializing ywsd busy cache")
+            self._busy_cache_engine = class_from_dotted_string(
+                self.settings.BUSY_CACHE_IMPLEMENTATION
+            )(self, self.settings)
+            await self._busy_cache_engine.init()
+        else:
+            logging.info("Use busy cache from yate CDR in database.")
+
+        if self._settings.REDIS is not None:
+            import redis.asyncio as redis
+
+            logging.info("Initializing redis connection")
+            self._redis_pool = redis.ConnectionPool.from_url(self._settings.REDIS)
 
         logging.info("Initializing database engine")
         async with aiopg.sa.create_engine(**self._settings.DB_CONFIG) as db_engine:
@@ -172,6 +200,11 @@ class YateRoutingEngine(YateAsync):
     async def store_cache_infos(self, entries: Dict[str, IntermediateRoutingResult]):
         await self._routing_cache.update(entries)
 
+    async def _web_busy_cache_status(self, request):
+        if self._busy_cache_engine is None:
+            return web.Response(status=404, text="No ywsd busy cache configured.")
+        return web.json_response(await self._busy_cache_engine.busy_status())
+
     async def _web_stage1_handler(self, request):
         params = request.query
 
@@ -261,6 +294,9 @@ def main():
     )
     parser.add_argument("--verbose", help="Print out debug logs.", action="store_true")
     parser.add_argument(
+        "--trace", help="Print out debug logs of yate messaging.", action="store_true"
+    )
+    parser.add_argument(
         "--web-only",
         help="Only start the webserver. Do not connect to yate",
         dest="web_only",
@@ -282,6 +318,8 @@ def main():
         logging.basicConfig(level=logging.DEBUG, **logging_basic_config_params)
     else:
         logging.basicConfig(level=logging.INFO, **logging_basic_config_params)
+    if not args.trace:
+        logging.getLogger("yate").setLevel(logging.INFO)
 
     logging.debug("Debug logging enabled.")
 

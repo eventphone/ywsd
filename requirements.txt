@@ -1,6 +1,6 @@
 aiohttp
 aiopg
-aioredis
 python-yate
 pyyaml
 sqlalchemy<2.0.0
+redis[hiredis]
