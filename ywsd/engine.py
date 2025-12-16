@@ -15,8 +15,8 @@ from yate.protocol import Message
 
 import ywsd.yate
 from ywsd.objects import Yate, Extension, DoesNotExist
-from ywsd import stage1, stage2
-from ywsd.util import class_from_dotted_string
+from ywsd import stage1, stage2, statistics
+from ywsd.util import class_from_dotted_string, calculate_statistics_aggregates
 from ywsd.routing_cache import RoutingCacheBase
 from ywsd.routing_tree import IntermediateRoutingResult, RoutingTree, RoutingError
 from ywsd.settings import Settings
@@ -35,12 +35,16 @@ class YateRoutingEngine(YateAsync):
         self._busy_cache_engine = None
         self._routing_cache: Optional[RoutingCacheBase] = None
         self._yates_dict: Dict[int, Yate] = {}
+        self._statistics = None
 
         if self._settings.WEB_INTERFACE is not None:
             self._web_app = web.Application()
             self._web_app.add_routes([web.get("/stage1", self._web_stage1_handler)])
             self._web_app.add_routes(
                 [web.get("/busy_cache", self._web_busy_cache_status)]
+            )
+            self._web_app.add_routes(
+                [web.get("/statistics", self._web_statistics_handler)]
             )
             self._app_runner = web.AppRunner(self._web_app)
         else:
@@ -117,7 +121,16 @@ class YateRoutingEngine(YateAsync):
             import redis.asyncio as redis
 
             logging.info("Initializing redis connection")
-            self._redis_pool = redis.ConnectionPool.from_url(self._settings.REDIS)
+            self._redis_pool = redis.ConnectionPool.from_url(
+                self._settings.REDIS, decode_responses=True
+            )
+
+        if self._settings.STATISTICS is not None:
+            self._statistics = statistics.Statistics(
+                self.redis_pool, self._settings.STATISTICS
+            )
+            statistics.initialize_statistics(self._statistics)
+            logging.info("Initialized statistics module")
 
         logging.info("Initializing database engine")
         async with aiopg.sa.create_engine(**self._settings.DB_CONFIG) as db_engine:
@@ -213,6 +226,34 @@ class YateRoutingEngine(YateAsync):
         if self._busy_cache_engine is None:
             return web.Response(status=404, text="No ywsd busy cache configured.")
         return web.json_response(await self._busy_cache_engine.busy_status())
+
+    async def _web_statistics_handler(self, request):
+        scope = request.query.get("scope", "stage1")
+        scopes = scope.split(",")
+        results = {}
+        if "stage1" in scopes or "stage1_agg" in scopes:
+            stage1_data = await self._statistics.get_stage1_stats()
+            stage1_times = [int(data[1]) for data in stage1_data]
+            if "stage1_agg" in scopes:
+                results["stage1_agg"] = calculate_statistics_aggregates(stage1_times)
+            if "stage1" in scopes:
+                results["stage1"] = stage1_data
+        if "stage2" in scopes or "stage2_agg" in scopes:
+            stage2_data = await self._statistics.get_stage2_stats()
+            stage2_times = [int(data[1]) for data in stage2_data]
+            if "stage2_agg" in scopes:
+                results["stage2_agg"] = calculate_statistics_aggregates(stage2_times)
+            if "stage2" in scopes:
+                results["stage2"] = stage2_data
+        if "query" in scopes or "query_agg" in scopes:
+            query_data = await self._statistics.get_query_stats()
+            query_times = [int(data[1]) for data in query_data]
+            if "query_agg" in scopes:
+                results["query_agg"] = calculate_statistics_aggregates(query_times)
+            if "query" in scopes:
+                results["query"] = query_data
+
+        return web.json_response(results)
 
     async def _web_stage1_handler(self, request):
         params = request.query

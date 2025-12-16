@@ -35,6 +35,10 @@ CACHE_IMPLEMENTATION: "ywsd.routing_cache.PythonDictRoutingCache"
 # BUSY_CACHE_IMPLEMENTATION: "ywsd.busy_cache.PythonDictBusyCache"
 # BUSY_CACHE_IMPLEMENTATION: "ywsd.busy_cache.RedisBusyCache"
 
+# Enable statistics module. Requires a redis connection to be configured.
+# STATISTICS:
+#   LOG_QUERY_TIME: true
+#   HISTORY_TIME: 3600
 
 #CACHE_CONFIG:
 #  object_lifetime: 600
