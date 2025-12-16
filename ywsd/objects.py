@@ -9,6 +9,8 @@ from sqlalchemy.sql.ddl import CreateTable, CreateIndex
 from sqlalchemy.sql.expression import bindparam, func
 from sqlalchemy.sql import select
 
+from ywsd.statistics import MeasuredQuery
+
 metadata = sa.MetaData()
 
 
@@ -146,10 +148,13 @@ class Registration:
     @classmethod
     async def load_locations_for(cls, user: User, dialed_number, db_connection):
         result = []
-        res = await db_connection.execute(
-            cls.table.select().where(cls.table.c.username == user.username)
-        )
-        return [cls(row, user=user, dialed_number=dialed_number) async for row in res]
+        with MeasuredQuery():
+            res = await db_connection.execute(
+                cls.table.select().where(cls.table.c.username == user.username)
+            )
+            return [
+                cls(row, user=user, dialed_number=dialed_number) async for row in res
+            ]
 
     @property
     def call_target(self):
@@ -178,13 +183,14 @@ class ActiveCall:
 
     @classmethod
     async def is_active_call(cls, username, x_eventphone_id, db_connection):
-        return (
-            await db_connection.scalar(
-                select([func.count(cls.table.c.username)])
-                .where(cls.table.c.username == username)
-                .where(cls.table.c.x_eventphone_id == x_eventphone_id)
-            )
-        ) > 0
+        with MeasuredQuery():
+            return (
+                await db_connection.scalar(
+                    select([func.count(cls.table.c.username)])
+                    .where(cls.table.c.username == username)
+                    .where(cls.table.c.x_eventphone_id == x_eventphone_id)
+                )
+            ) > 0
 
 
 class Yate:
@@ -413,12 +419,13 @@ class Extension(RoutingTreeNode):
     @classmethod
     async def load_extension(cls, extension, db_connection):
         load_time_start = datetime.now()
-        res = await db_connection.execute(
-            cls.table.select().where(cls.table.c.extension == extension)
-        )
-        if res.rowcount == 0:
-            raise DoesNotExist('No extension "{}" found'.format(extension))
-        obj = cls(await res.first())
+        with MeasuredQuery():
+            res = await db_connection.execute(
+                cls.table.select().where(cls.table.c.extension == extension)
+            )
+            if res.rowcount == 0:
+                raise DoesNotExist('No extension "{}" found'.format(extension))
+            obj = cls(await res.first())
         # we may override the discovery time later (if this node is further discovered) but initialize the
         # discovery time to the mere load time if the node isn't discovered further
         obj.discovery_time = (datetime.now() - load_time_start).total_seconds()
@@ -459,11 +466,14 @@ class Extension(RoutingTreeNode):
         load_time_start = datetime.now()
         if self.forwarding_extension_id is None:
             raise DoesNotExist("This extension has no forwarding extension")
-        res = await db_connection.execute(
-            self.table.select().where(self.table.c.id == self.forwarding_extension_id)
-        )
-        # this always exists and is unique by db constraints
-        self.forwarding_extension = Extension(await res.first())
+        with MeasuredQuery():
+            res = await db_connection.execute(
+                self.table.select().where(
+                    self.table.c.id == self.forwarding_extension_id
+                )
+            )
+            # this always exists and is unique by db constraints
+            self.forwarding_extension = Extension(await res.first())
         self.forwarding_extension.discovery_time = (
             datetime.now() - load_time_start
         ).total_seconds()
@@ -474,45 +484,46 @@ class Extension(RoutingTreeNode):
 
     async def populate_fork_ranks(self, db_connection):
         load_time_start = datetime.now()
-        result = await db_connection.execute(
-            sa.select(
-                [ForkRank.table, ForkRank.member_table, Extension.table],
-                use_labels=True,
-            )
-            .where(ForkRank.table.c.extension_id == self.id)
-            .where(ForkRank.member_table.c.extension_id == Extension.table.c.id)
-            .where(ForkRank.table.c.id == ForkRank.member_table.c.forkrank_id)
-            .order_by(ForkRank.table.c.index)
-        )
-        self.fork_ranks = []
-        current_rank_id = None
-        current_rank = None
-        async for row in result:
-            if current_rank_id != row.ForkRank_id:
-                current_rank_id = row.ForkRank_id
-                current_rank = ForkRank(row, prefix="ForkRank_")
-                if self.tree_identifier is not None:
-                    current_rank.tree_identifier = (
-                        self.tree_identifier + "-fr" + str(current_rank.id)
-                    )
-                if self.fork_ranks:
-                    self.fork_ranks[-1].discovery_time = (
-                        datetime.now() - load_time_start
-                    ).total_seconds()
-                self.fork_ranks.append(current_rank)
-            member = ForkRank.Member(
-                ForkRank.RankMemberType[row.ForkRankMember_rankmember_type],
-                row.ForkRankMember_active,
-                Extension(row, prefix="Extension_"),
-            )
-            member.extension.discovery_time = (
-                datetime.now() - load_time_start
-            ).total_seconds()
-            if self.tree_identifier is not None:
-                member.extension.tree_identifier = (
-                    current_rank.tree_identifier + "-" + str(member.extension.id)
+        with MeasuredQuery():
+            result = await db_connection.execute(
+                sa.select(
+                    [ForkRank.table, ForkRank.member_table, Extension.table],
+                    use_labels=True,
                 )
-            current_rank.members.append(member)
+                .where(ForkRank.table.c.extension_id == self.id)
+                .where(ForkRank.member_table.c.extension_id == Extension.table.c.id)
+                .where(ForkRank.table.c.id == ForkRank.member_table.c.forkrank_id)
+                .order_by(ForkRank.table.c.index)
+            )
+            self.fork_ranks = []
+            current_rank_id = None
+            current_rank = None
+            async for row in result:
+                if current_rank_id != row.ForkRank_id:
+                    current_rank_id = row.ForkRank_id
+                    current_rank = ForkRank(row, prefix="ForkRank_")
+                    if self.tree_identifier is not None:
+                        current_rank.tree_identifier = (
+                            self.tree_identifier + "-fr" + str(current_rank.id)
+                        )
+                    if self.fork_ranks:
+                        self.fork_ranks[-1].discovery_time = (
+                            datetime.now() - load_time_start
+                        ).total_seconds()
+                    self.fork_ranks.append(current_rank)
+                member = ForkRank.Member(
+                    ForkRank.RankMemberType[row.ForkRankMember_rankmember_type],
+                    row.ForkRankMember_active,
+                    Extension(row, prefix="Extension_"),
+                )
+                member.extension.discovery_time = (
+                    datetime.now() - load_time_start
+                ).total_seconds()
+                if self.tree_identifier is not None:
+                    member.extension.tree_identifier = (
+                        current_rank.tree_identifier + "-" + str(member.extension.id)
+                    )
+                current_rank.members.append(member)
 
         if self.fork_ranks:
             self.fork_ranks[-1].discovery_time = (

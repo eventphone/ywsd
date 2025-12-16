@@ -8,6 +8,7 @@ import ywsd.yate
 from ywsd.objects import Extension, User, DoesNotExist
 from ywsd.routing_tree import RoutingTree, RoutingError
 from ywsd.util import retry_db_offline, OperationalError
+from ywsd.statistics import submit_stage1_routing_time
 
 
 class RoutingTask:
@@ -150,6 +151,9 @@ class RoutingTask:
         )
         logging.debug(
             "Stage1 routing %s to %s took %s us", caller, called, routing_time_us
+        )
+        submit_stage1_routing_time(
+            result_message.params.get("x_eventphone_id", ""), routing_time_us
         )
         if (
             routing_time_us

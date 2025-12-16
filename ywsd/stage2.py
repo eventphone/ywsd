@@ -6,6 +6,7 @@ from yate.protocol import Message
 
 from ywsd.objects import User, ActiveCall, Registration, DoesNotExist
 from ywsd.util import retry_db_offline
+from ywsd.statistics import submit_stage2_routing_time
 
 
 HEADER_NAMES = (
@@ -156,6 +157,9 @@ class RoutingTask:
         )
         logging.debug(
             "Stage2 routing %s to %s took %s us", caller, called, routing_time_us
+        )
+        submit_stage2_routing_time(
+            self._message.params.get("x_eventphone_id", ""), routing_time_us
         )
         if (
             routing_time_us

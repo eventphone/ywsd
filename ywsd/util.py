@@ -2,6 +2,7 @@ import asyncio
 import functools
 import logging
 from importlib import import_module
+from typing import List, Dict
 
 from psycopg2 import OperationalError
 
@@ -37,3 +38,15 @@ def retry_db_offline(count, wait_ms):
         return decorated
 
     return decorate
+
+
+def calculate_statistics_aggregates(data: List[int]) -> Dict[str, int]:
+    sorted_values = sorted(data)
+
+    return {
+        "min": min(data),
+        "max": max(data),
+        "mean": sum(data) / len(data),
+        "median": sorted_values[len(data) // 2],
+        "90p_quantil": sorted_values[-(len(data) // 10) - 1],
+    }
