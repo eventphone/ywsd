@@ -210,7 +210,17 @@ class YateRoutingEngine(YateAsync):
 
     async def _retrieve_from_cache_for(self, msg: Message):
         called = "lateroute/" + msg.params.get("called")
-        result = await self._routing_cache.retrieve(called)
+        try:
+            result = await self._routing_cache.retrieve(called)
+        except Exception as e:
+            backtrace = traceback.format_exc()
+            logging.error(
+                "An error occurred while retrieving stored routing cache for target %s: %s\nBacktrace: %s",
+                called,
+                e,
+                backtrace,
+            )
+            raise
         if result is None:
             # This is an invalid entry, answer the message but with invalid result
             msg.result = ""

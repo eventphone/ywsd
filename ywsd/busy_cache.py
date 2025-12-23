@@ -100,10 +100,7 @@ class RedisBusyCache(BusyCacheBase):
 
     async def busy_status(self):
         async with redis.Redis(connection_pool=self._yate.redis_pool) as client:
-            return {
-                k.decode("ascii"): int(v)
-                for k, v in (await client.hgetall("busy_cache")).items()
-            }
+            return {k: int(v) for k, v in (await client.hgetall("busy_cache")).items()}
 
     async def flush(self):
         async with redis.Redis(connection_pool=self._yate.redis_pool) as client:
