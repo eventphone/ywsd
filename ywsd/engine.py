@@ -186,6 +186,7 @@ class YateRoutingEngine(YateAsync):
     def _call_route_handler(self, msg: Message) -> Optional[bool]:
         logging.debug("Asked to route message: {}".format(msg.params))
         called = msg.params.get("called")
+        caller = msg.params.get("caller")
         stage2_active = msg.params.get("eventphone_stage2", "0")
 
         if called is None or called == "":
@@ -199,7 +200,10 @@ class YateRoutingEngine(YateAsync):
                 task = stage2.RoutingTask(self, msg)
             else:
                 task = stage1.RoutingTask(self, msg)
-            asyncio.create_task(task.routing_job())
+            asyncio.create_task(
+                task.routing_job(),
+                name=f"{caller}->{called}@{datetime.now().timestamp()}",
+            )
         elif called.startswith("stage1-"):
             asyncio.create_task(self._retrieve_from_cache_for(msg))
         elif called.startswith("stage2-"):
@@ -262,6 +266,8 @@ class YateRoutingEngine(YateAsync):
                 results["query_agg"] = calculate_statistics_aggregates(query_times)
             if "query" in scopes:
                 results["query"] = query_data
+        if "tasks" in scopes:
+            results["tasks"] = [str(task) for task in asyncio.all_tasks()]
 
         return web.json_response(results)
 
