@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 import logging
 import traceback
@@ -160,12 +161,13 @@ class RoutingTask:
             >= self._yate.settings.ROUTING_TIME_WARNING_THRESHOLD_MS * 1000
         ):
             logging.warning(
-                "Stage1 routing %s to %s took long: %s us",
+                "Stage1 routing %s to %s took long: %s us. Active Tasks: %s",
                 caller,
                 called,
                 routing_time_us,
+                len(asyncio.all_tasks()),
             )
             logging.debug(
                 "Routing tree trace of slow routing:\n%s",
-                self._routing_tree.serialized_tree(),
+                self._routing_tree.serialized_tree() if self._routing_tree else "None",
             )
