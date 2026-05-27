@@ -130,7 +130,7 @@ class RoutingTask:
                 raise  # this is a database error and the routing will be re-tried
             backtrace = traceback.format_exc()
             logging.error(
-                "An error occurred while routing {} to {}: {}\nBacktrace:".format(
+                "An error occurred while routing {} to {}: {}\nBacktrace:\n{}".format(
                     caller, called, e, backtrace
                 )
             )
